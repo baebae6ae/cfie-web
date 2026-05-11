@@ -1,0 +1,105 @@
+﻿@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:wght@400;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
+
+:root {
+  --newsprint-bg:  #F9F9F7;
+  --newsprint-ink: #111111;
+  --newsprint-grey:#E5E5E0;
+  --newsprint-red: #CC0000;
+  --neutral-100: #F5F5F5; --neutral-200: #E5E5E5; --neutral-400: #A3A3A3;
+  --neutral-500: #737373; --neutral-600: #525252; --neutral-700: #404040;
+  --text1: #111; --text2: #525252; --text3: #737373;
+  --bull: #0D7F3C; --bear: #C41D3A;
+  --bull-bg: rgba(13,127,60,.08); --bear-bg: rgba(196,29,58,.08);
+  --gold: #B8860B;
+  --font-display: "Playfair Display", serif;
+  --font-body: "Lora", serif;
+  --font-ui: "Inter","Noto Sans KR",sans-serif;
+  --font-mono: "JetBrains Mono",monospace;
+  --topbar-h: 60px;
+  --ticker-h: 36px;
+  --radius: 6px;
+  --shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body { background: var(--newsprint-bg); color: var(--text1); font-family: var(--font-ui); min-height: 100vh; }
+
+/* ── 상단바 ─ */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  height: var(--topbar-h); background: var(--newsprint-ink);
+  display: flex; align-items: center; gap: 20px; padding: 0 20px;
+  border-bottom: 2px solid var(--newsprint-red);
+}
+.topbar-brand { display: flex; align-items: baseline; gap: 4px; }
+.logo { font-family: var(--font-display); font-size: 1.5rem; color: #fff; font-weight: 700; letter-spacing: 2px; }
+.ver  { font-size: .65rem; color: #aaa; font-family: var(--font-mono); }
+.topbar-nav { display: flex; gap: 4px; }
+.nav-link {
+  color: #ccc; text-decoration: none; font-size: .85rem; padding: 6px 12px;
+  border-radius: var(--radius); transition: all .2s;
+}
+.nav-link:hover, .nav-link.active { background: rgba(255,255,255,.1); color: #fff; }
+.topbar-search { flex: 1; max-width: 320px; position: relative; }
+.search-form { display: flex; gap: 4px; }
+.search-input {
+  flex: 1; padding: 6px 12px; border-radius: var(--radius); border: 1px solid #444;
+  background: #222; color: #fff; font-size: .85rem; outline: none;
+}
+.search-input:focus { border-color: #888; }
+.search-btn { background: #333; color: #ccc; border: none; padding: 6px 10px; border-radius: var(--radius); cursor: pointer; }
+.search-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: #1a1a1a; border: 1px solid #333; border-radius: var(--radius);
+  z-index: 200; max-height: 280px; overflow-y: auto;
+}
+.sdrop-item { display: flex; gap: 10px; padding: 9px 12px; cursor: pointer; align-items: center; }
+.sdrop-item:hover { background: #2a2a2a; }
+.sdrop-ticker { font-family: var(--font-mono); font-size: .8rem; color: #aaa; min-width: 80px; }
+.sdrop-name { font-size: .85rem; color: #eee; }
+.topbar-user { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.user-avatar { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #444; object-fit: cover; }
+.user-name { font-size: .82rem; color: #ccc; }
+.logout-btn { background: transparent; border: 1px solid #555; color: #aaa; font-size: .78rem; padding: 4px 10px; border-radius: var(--radius); cursor: pointer; }
+.logout-btn:hover { border-color: #aaa; color: #fff; }
+
+/* ── 티커 스트립 ─ */
+.ticker-strip { height: var(--ticker-h); background: #1a1a1a; overflow: hidden; position: relative; border-bottom: 1px solid #333; }
+.ticker-track { display: flex; gap: 0; height: 100%; align-items: center; animation: tickerScroll 60s linear infinite; white-space: nowrap; }
+.ticker-track:hover { animation-play-state: paused; }
+@keyframes tickerScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+.ticker-item { display: inline-flex; gap: 8px; padding: 0 24px; border-right: 1px solid #333; align-items: center; height: 100%; }
+.ti-name { font-size: .78rem; color: #999; }
+.ti-price { font-family: var(--font-mono); font-size: .8rem; color: #eee; }
+.ti-pct { font-size: .75rem; }
+.ti-pct.bull { color: var(--bull); } .ti-pct.bear { color: var(--bear); }
+
+/* ── 공통 컨테이너 ─ */
+.main-content { max-width: 1400px; margin: 0 auto; padding: 28px 20px; display: flex; flex-direction: column; gap: 28px; }
+
+/* ── 색상 ─ */
+.bull { color: var(--bull); } .bear { color: var(--bear); }
+.neutral { color: var(--neutral-500); }
+
+/* ── More 버튼 ─ */
+.more-wrap { text-align: center; margin-top: 16px; }
+.more-btn { background: none; border: 1px solid var(--neutral-400); color: var(--text2); font-size: .83rem; padding: 8px 24px; border-radius: 20px; cursor: pointer; }
+.more-btn:hover { border-color: var(--newsprint-ink); color: var(--text1); }
+.hidden { display: none !important; }
+
+/* ── 토스트 ─ */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px); background: #1a1a1a; color: #eee; padding: 10px 20px; border-radius: 24px; font-size: .85rem; z-index: 9999; opacity: 0; transition: all .3s; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.toast-error { background: var(--bear); }
+.toast-ok    { background: var(--bull); }
+
+/* ── 스켈레톤 ─ */
+.mq-skeleton, .h52-skeleton { height: 60px; background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%); background-size: 200%; animation: shimmer 1.5s infinite; border-radius: var(--radius); margin-bottom: 8px; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+@media (max-width: 768px) {
+  .topbar-nav { display: none; }
+  .topbar-search { max-width: 180px; }
+  .user-name { display: none; }
+}

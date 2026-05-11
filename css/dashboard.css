@@ -1,0 +1,40 @@
+﻿.market-section {
+  background: #fff; border: 1px solid var(--newsprint-grey); border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--shadow);
+}
+.ms-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: var(--newsprint-ink); color: #fff;
+}
+.ms-flag-title { display: flex; align-items: center; gap: 10px; }
+.ms-flag { font-size: 1.3rem; }
+.ms-title { font-family: var(--font-display); font-size: 1.05rem; color: #fff; }
+.ms-updated { font-size: .72rem; color: #aaa; font-family: var(--font-mono); }
+.ms-body { display: flex; gap: 0; }
+.ms-quotes-col { width: 320px; min-width: 240px; border-right: 1px solid var(--newsprint-grey); padding: 16px; }
+.ms-highs-col  { flex: 1; padding: 16px; }
+.ms-highs-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: .88rem; font-weight: 600; }
+.market-tabs { display: flex; gap: 4px; }
+.mtab { background: none; border: 1px solid var(--neutral-300, #d4d4d4); font-size: .78rem; padding: 4px 12px; border-radius: 20px; cursor: pointer; color: var(--text2); }
+.mtab.active { background: var(--newsprint-ink); color: #fff; border-color: var(--newsprint-ink); }
+
+/* 지수 카드 */
+.ms-quotes { display: flex; flex-direction: column; gap: 10px; }
+.mq-card { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--newsprint-grey); }
+.mq-name { font-size: .85rem; font-weight: 600; color: var(--text2); }
+.mq-price { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; }
+.mq-chg { font-size: .8rem; }
+
+/* 52주 신고가 그리드 */
+.high52-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.h52-card {
+  border: 1px solid var(--newsprint-grey); border-radius: var(--radius); padding: 10px 12px;
+  cursor: pointer; transition: box-shadow .15s, border-color .15s;
+}
+.h52-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); border-color: #aaa; }
+.h52-name { font-size: .78rem; font-weight: 600; color: var(--text1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h52-ticker { font-family: var(--font-mono); font-size: .7rem; color: var(--text3); }
+.h52-price { font-family: var(--font-mono); font-size: .88rem; margin-top: 6px; }
+.h52-fis { font-size: .72rem; margin-top: 3px; }
+
+@media (max-width: 900px) { .ms-body { flex-direction: column; } .ms-quotes-col { width: 100%; border-right: none; border-bottom: 1px solid var(--newsprint-grey); } }

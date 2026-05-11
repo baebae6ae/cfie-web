@@ -1,0 +1,84 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CFIE — 차트 분석</title>
+<script>if(!localStorage.getItem("cfie_gh_token"))window.location.replace("login.html");</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/common.css"><link rel="stylesheet" href="css/analyze.css">
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-brand">
+    <a href="dashboard.html" style="text-decoration:none">
+      <span class="logo">CFIE</span><span class="ver">v4.0</span>
+    </a>
+  </div>
+  <nav class="topbar-nav">
+    <a href="dashboard.html" class="nav-link">대시보드</a>
+    <a href="scan.html"      class="nav-link">종목 찾기</a>
+    <a href="analyze.html"   class="nav-link">차트 분석</a>
+    <a href="mypage.html"    class="nav-link">마이 페이지</a>
+  </nav>
+  <div class="topbar-search">
+    <form class="search-form" onsubmit="return false;">
+      <input type="text" id="searchInput" class="search-input" placeholder="종목명 또는 티커 검색…" autocomplete="off">
+    </form>
+    <div id="searchDropdown" class="search-dropdown hidden"></div>
+  </div>
+  <div class="topbar-user">
+    <img id="userAvatar" class="user-avatar" src="" alt="" style="display:none">
+    <span id="userName" class="user-name"></span>
+    <button id="logoutBtn" class="logout-btn">로그아웃</button>
+  </div>
+</header>
+<div class="ticker-strip"><div class="ticker-track" id="tickerTrack">
+  <div class="ticker-item"><span class="ti-name">시장 데이터 로딩 중…</span></div>
+</div></div>
+<main class="main-content">
+  <div class="analyze-top">
+    <div class="atop-left">
+      <div class="stock-search-bar">
+        <input id="analyzeSearchInput" type="text" placeholder="종목명 또는 티커 입력…" autocomplete="off">
+        <button onclick="searchAndAnalyze()">분석</button>
+        <div id="analyzeDropdown" class="search-dropdown hidden"></div>
+      </div>
+      <div id="stockInfo" class="stock-info hidden">
+        <span id="stockName" class="s-name"></span>
+        <span id="stockTicker" class="s-ticker"></span>
+        <span id="stockPrice" class="s-price"></span>
+        <span id="stockChg" class="s-chg"></span>
+      </div>
+    </div>
+    <div class="atop-right">
+      <div class="tf-tabs">
+        <button class="tftab active" onclick="setTF('1d',this)">일봉</button>
+        <button class="tftab"        onclick="setTF('1wk',this)">주봉</button>
+        <button class="tftab"        onclick="setTF('1mo',this)">월봉</button>
+      </div>
+    </div>
+  </div>
+  <div id="chartWrap" class="chart-wrap">
+    <div id="chartPlaceholder" class="chart-placeholder">종목을 검색하여 차트를 확인하세요</div>
+    <div id="mainChart" class="main-chart hidden"></div>
+    <div id="volChart"  class="vol-chart  hidden"></div>
+  </div>
+  <div id="fisPanel" class="fis-panel hidden">
+    <div class="fp-header">
+      <div class="fp-title">FIS 차트 첫인상 점수</div>
+      <div id="fpFisScore" class="fp-fis-score"></div>
+      <div id="fpLabel"    class="fp-label"></div>
+    </div>
+    <div id="fpBars" class="fp-bars"></div>
+    <div class="fp-entry-row">
+      <span class="fp-entry-label">진입 점수</span>
+      <span id="fpEntryScore" class="fp-entry-score"></span>
+      <span id="fpEntryLabel" class="fp-entry-label-txt"></span>
+    </div>
+    <div id="fpIchi" class="fp-ichi"></div>
+  </div>
+</main>
+<script type="module" src="js/analyze.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+﻿.scan-header { border-bottom: 2px solid var(--newsprint-ink); padding-bottom: 12px; }
+.scan-title { font-family: var(--font-display); font-size: 1.5rem; }
+.scan-desc  { font-size: .85rem; color: var(--text2); margin-top: 4px; }
+.scan-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.scan-tabs, .scan-type-tabs { display: flex; gap: 4px; }
+.stab, .styp {
+  background: none; border: 1px solid var(--neutral-400); color: var(--text2);
+  font-size: .82rem; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: all .2s;
+}
+.stab.active, .styp.active { background: var(--newsprint-ink); color: #fff; border-color: var(--newsprint-ink); }
+.scan-btn {
+  background: var(--newsprint-red); color: #fff; border: none;
+  padding: 8px 22px; border-radius: var(--radius); cursor: pointer; font-size: .88rem;
+  margin-left: auto;
+}
+.scan-btn:hover { opacity: .85; }
+.scan-status { font-size: .85rem; color: var(--text3); padding: 8px 0; }
+.scan-results { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--newsprint-grey); border-radius: var(--radius); overflow: hidden; }
+.scan-row {
+  display: grid; grid-template-columns: 60px 1fr 110px 100px 100px 90px 90px;
+  gap: 8px; align-items: center; padding: 10px 14px;
+  border-bottom: 1px solid var(--newsprint-grey); transition: background .15s;
+}
+.scan-row:last-child { border-bottom: none; }
+.scan-row:hover { background: var(--neutral-100); }
+.scan-row-header { font-size: .75rem; font-weight: 700; color: var(--text3); background: var(--neutral-100); text-transform: uppercase; letter-spacing: .04em; }
+.sr-rank   { font-family: var(--font-mono); font-size: .82rem; color: var(--text3); text-align: center; }
+.sr-name   { font-size: .88rem; font-weight: 600; cursor: pointer; color: var(--newsprint-ink); }
+.sr-name:hover { text-decoration: underline; }
+.sr-ticker { font-family: var(--font-mono); font-size: .75rem; color: var(--text3); }
+.sr-price  { font-family: var(--font-mono); font-size: .88rem; }
+.sr-chg    { font-size: .82rem; }
+.sr-fis    { font-family: var(--font-mono); font-size: .9rem; font-weight: 700; text-align: center; }
+.sr-entry  { font-size: .78rem; text-align: center; }

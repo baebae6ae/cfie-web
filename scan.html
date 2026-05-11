@@ -1,0 +1,63 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CFIE — 종목 찾기</title>
+<script>if(!localStorage.getItem("cfie_gh_token"))window.location.replace("login.html");</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/common.css"><link rel="stylesheet" href="css/scan.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-brand">
+    <a href="dashboard.html" style="text-decoration:none">
+      <span class="logo">CFIE</span><span class="ver">v4.0</span>
+    </a>
+  </div>
+  <nav class="topbar-nav">
+    <a href="dashboard.html" class="nav-link">대시보드</a>
+    <a href="scan.html"      class="nav-link">종목 찾기</a>
+    <a href="analyze.html"   class="nav-link">차트 분석</a>
+    <a href="mypage.html"    class="nav-link">마이 페이지</a>
+  </nav>
+  <div class="topbar-search">
+    <form class="search-form" onsubmit="return false;">
+      <input type="text" id="searchInput" class="search-input" placeholder="종목명 또는 티커 검색…" autocomplete="off">
+    </form>
+    <div id="searchDropdown" class="search-dropdown hidden"></div>
+  </div>
+  <div class="topbar-user">
+    <img id="userAvatar" class="user-avatar" src="" alt="" style="display:none">
+    <span id="userName" class="user-name"></span>
+    <button id="logoutBtn" class="logout-btn">로그아웃</button>
+  </div>
+</header>
+<div class="ticker-strip"><div class="ticker-track" id="tickerTrack">
+  <div class="ticker-item"><span class="ti-name">시장 데이터 로딩 중…</span></div>
+</div></div>
+<main class="main-content">
+  <div class="scan-header">
+    <h1 class="scan-title">신규 진입 종목 찾기</h1>
+    <p class="scan-desc">FIS 점수 기준으로 최적 진입 타이밍 종목을 발굴합니다</p>
+  </div>
+  <div class="scan-controls">
+    <div class="scan-tabs">
+      <button class="stab active" onclick="setMarket('kospi',this)">KOSPI</button>
+      <button class="stab"        onclick="setMarket('kosdaq',this)">KOSDAQ</button>
+      <button class="stab"        onclick="setMarket('us',this)">미국</button>
+    </div>
+    <div class="scan-type-tabs">
+      <button class="styp active" onclick="setScanType('fis',this)">FIS 진입</button>
+      <button class="styp"        onclick="setScanType('kumo',this)">쿠모 돌파</button>
+    </div>
+    <button class="scan-btn" onclick="doScan()">스캔 시작</button>
+  </div>
+  <div id="scanStatus" class="scan-status">스캔 버튼을 눌러 시작하세요</div>
+  <div id="scanResults" class="scan-results"></div>
+  <div id="scanMoreWrap" class="more-wrap hidden">
+    <button class="more-btn" onclick="loadMoreScan()">자세히 보기 ▼</button>
+  </div>
+</main>
+<script type="module" src="js/scan.js"></script>
+</body>
+</html>
