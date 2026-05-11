@@ -1,9 +1,6 @@
-﻿import { requireAuth, updateUserUI } from "./auth.js";
-import { fisLabel }                  from "./indicators.js";
+﻿import { fisLabel }  from "./indicators.js";
 import { fmt, fmtPct, startClock, markActiveNav, initSearch, toast, bullOrBear } from "./common.js";
 
-const user = requireAuth(); if (!user) throw 0;
-updateUserUI();
 startClock(); markActiveNav();
 initSearch(ticker => { window.location.href = `analyze.html?t=${ticker}`; });
 
@@ -14,7 +11,7 @@ window.setMarket   = (m, btn) => { _market = m; document.querySelectorAll(".stab
 window.setScanType = (t, btn) => { _type   = t; document.querySelectorAll(".styp").forEach(b => b.classList.toggle("active", b === btn)); };
 
 window.doScan = async function() {
-  const statusEl = document.getElementById("scanStatus");
+  const statusEl  = document.getElementById("scanStatus");
   const resultsEl = document.getElementById("scanResults");
   const moreWrap  = document.getElementById("scanMoreWrap");
   _results = []; _shown = 0;

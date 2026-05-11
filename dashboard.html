@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>CFIE — 대시보드</title>
-<script>if(!localStorage.getItem("cfie_gh_token"))window.location.replace("login.html");</script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:wght@400;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/common.css">
 <link rel="stylesheet" href="css/dashboard.css">
@@ -20,18 +19,12 @@
     <a href="dashboard.html" class="nav-link">대시보드</a>
     <a href="scan.html"      class="nav-link">종목 찾기</a>
     <a href="analyze.html"   class="nav-link">차트 분석</a>
-    <a href="mypage.html"    class="nav-link">마이 페이지</a>
   </nav>
   <div class="topbar-search">
     <form class="search-form" onsubmit="return false;">
       <input type="text" id="searchInput" class="search-input" placeholder="종목명 또는 티커 검색…" autocomplete="off">
     </form>
     <div id="searchDropdown" class="search-dropdown hidden"></div>
-  </div>
-  <div class="topbar-user">
-    <img id="userAvatar" class="user-avatar" src="" alt="" style="display:none">
-    <span id="userName" class="user-name"></span>
-    <button id="logoutBtn" class="logout-btn">로그아웃</button>
   </div>
 </header>
 <div class="ticker-strip"><div class="ticker-track" id="tickerTrack">

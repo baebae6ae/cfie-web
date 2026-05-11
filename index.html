@@ -3,12 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>CFIE</title>
-<script>
-  // 로그인 여부에 따라 즉시 리다이렉트 (화면 깜빡임 없음)
-  window.location.replace(
-    localStorage.getItem("cfie_gh_token") ? "dashboard.html" : "login.html"
-  );
-</script>
+<script>window.location.replace("dashboard.html");</script>
 </head>
 <body></body>
 </html>

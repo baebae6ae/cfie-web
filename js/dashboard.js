@@ -1,9 +1,6 @@
-﻿import { requireAuth, updateUserUI } from "./auth.js";
-import { fetchMultiQuote }           from "./yahoo.js";
+﻿import { fetchMultiQuote } from "./yahoo.js";
 import { fmt, fmtPct, startClock, markActiveNav, setTickerItems, initSearch, bullOrBear } from "./common.js";
 
-const user = requireAuth(); if (!user) throw 0;
-updateUserUI();
 startClock();
 markActiveNav();
 initSearch(ticker => { window.location.href = `analyze.html?t=${ticker}`; });
