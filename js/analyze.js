@@ -1,4 +1,4 @@
-﻿/* js/analyze.js  —  CFIE v4.0  (차트 크기 및 로딩 순서 개선 버전) */
+/* js/analyze.js  —  CFIE v4.0  (차트 크기 및 로딩 순서 개선 버전) */
 
 let _chart     = null;
 let _volChart  = null;
@@ -185,6 +185,59 @@ function renderChart(bars, fisBars, tf) {
 
   _chart.timeScale().fitContent();
 
+  // ── 크로스헤어 범례 (마우스 hover 시 OHLCV 표시) ────────────────
+  const chartStage = document.getElementById("chartStage");
+  const existLegend = document.getElementById("chartLegend");
+  if (existLegend) existLegend.remove();
+  const legendEl = document.createElement("div");
+  legendEl.id = "chartLegend";
+  legendEl.style.cssText = "position:absolute;top:6px;left:8px;z-index:10;font-size:11.5px;color:var(--newsprint-ink,#111);display:flex;gap:10px;flex-wrap:wrap;pointer-events:none;background:rgba(249,249,247,0.9);padding:3px 8px;border:1px solid rgba(0,0,0,0.08);";
+  if (chartStage) chartStage.appendChild(legendEl);
+
+  const _isKRW = (meta?.currency || "") !== "USD";
+  const _dec   = _isKRW ? 0 : 2;
+
+  _chart.subscribeCrosshairMove(param => {
+    if (!param.time || !param.point) { legendEl.innerHTML = ""; return; }
+    const cd = param.seriesData.get(candles);
+    if (!cd) return;
+    const bull = cd.close >= cd.open;
+    const t = typeof param.time === "object"
+      ? `${param.time.year}-${String(param.time.month).padStart(2,"0")}-${String(param.time.day).padStart(2,"0")}`
+      : param.time;
+    legendEl.innerHTML =
+      `<span style="color:#888">${t}</span>` +
+      `<span>시 <b>${fmt(cd.open,_dec)}</b></span>` +
+      `<span style="color:#CC0000">고 <b>${fmt(cd.high,_dec)}</b></span>` +
+      `<span style="color:#0047AB">저 <b>${fmt(cd.low,_dec)}</b></span>` +
+      `<span style="color:${bull?"#CC0000":"#0047AB"};font-weight:700">종 <b>${fmt(cd.close,_dec)}</b></span>`;
+  });
+
+  // ── 차트 이벤트 마커 ────────────────────────────────────────────────
+  const markers = [];
+  for (let mi = 1; mi < fisBars.length; mi++) {
+    const b = fisBars[mi], pb = fisBars[mi - 1];
+    // EMA20 골든크로스 (EMA20이 EMA60을 하향→상향)
+    if (pb.EMA20 != null && pb.EMA60 != null && b.EMA20 != null && b.EMA60 != null) {
+      if (pb.EMA20 <= pb.EMA60 && b.EMA20 > b.EMA60)
+        markers.push({ time: b.time, position: "belowBar", color: "#CC0000", shape: "arrowUp", text: "GC" });
+      if (pb.EMA20 >= pb.EMA60 && b.EMA20 < b.EMA60)
+        markers.push({ time: b.time, position: "aboveBar", color: "#0047AB", shape: "arrowDown", text: "DC" });
+    }
+    // MACD 골든크로스
+    if (pb.MACD != null && pb.MACD_SIGNAL != null && b.MACD != null && b.MACD_SIGNAL != null) {
+      if (pb.MACD <= pb.MACD_SIGNAL && b.MACD > b.MACD_SIGNAL)
+        markers.push({ time: b.time, position: "belowBar", color: "#2ea043", shape: "circle", text: "M↑" });
+      if (pb.MACD >= pb.MACD_SIGNAL && b.MACD < b.MACD_SIGNAL)
+        markers.push({ time: b.time, position: "aboveBar", color: "#e53935", shape: "circle", text: "M↓" });
+    }
+    // RSI 과매도 회복 (30 돌파)
+    if (pb.RSI14 != null && b.RSI14 != null && pb.RSI14 < 30 && b.RSI14 >= 30)
+      markers.push({ time: b.time, position: "belowBar", color: "#d29922", shape: "arrowUp", text: "RSI↑" });
+  }
+  if (markers.length)
+    candles.setMarkers(markers.sort((a, b) => (a.time < b.time ? -1 : 1)));
+
   // 리사이즈 대응
   const ro = new ResizeObserver(() => {
     const newWidth = mainEl.clientWidth;
@@ -228,93 +281,150 @@ function renderJudgment(j) {
 
 // ── 진입 점수 ────────────────────────────────────────────
 function renderEntryScore(entry) {
-  const score = entry.score ?? 0;
+  const score      = entry?.score ?? 0;
+  const comp       = entry?.components || {};
+  const setupName  = entry?.setup_name  || "일반";
+  const setupName2 = entry?.setup_name2 || "";
+  const setupScores= entry?.setup_scores || {};
+  const m          = entry?.metrics || {};
+
+  const ctx      = comp["추세문맥"]   ?? 0;
+  const structure= comp["진입구조"]   ?? 0;
+  const confirm  = comp["확인신호"]   ?? 0;
+  const space    = comp["저항여유"]   ?? 0;
+  const riskCtrl = comp["리스크관리"] ?? 0;
+
+  // 배지 + 상태 텍스트
+  const eCol = score >= 80 ? "#2ea043" : score >= 65 ? "#56d364" : score >= 50 ? "#d29922" : "#6e7681";
   const esBadge = document.getElementById("entryScoreBadge");
-  if (esBadge) {
-    esBadge.textContent   = score;
-    esBadge.style.background = score>=80?"#2ea043":score>=65?"#d29922":score>=50?"#E57373":"#888";
-    esBadge.style.color   = "#fff";
-  }
+  if (esBadge) { esBadge.textContent = score.toFixed(0); esBadge.style.background = eCol; esBadge.style.color = "#fff"; }
   const statusEl = document.getElementById("entryStatus");
-  if (statusEl) {
-    statusEl.innerHTML = `<strong>${entry.label||"—"}</strong>` +
-      (entry.setup_name  ? ` · <span class="setup-tag">${entry.setup_name}</span>`  : "") +
-      (entry.setup_name2 ? ` + <span class="setup-tag2">${entry.setup_name2}</span>`: "");
-  }
+  if (statusEl) statusEl.textContent =
+    score >= 80 ? "최적 진입 구간" : score >= 65 ? "양호한 진입 구간" : score >= 50 ? "조건부 진입 가능" : "진입 대기 구간";
+
   const metricsEl = document.getElementById("entryMetrics");
   if (!metricsEl) return;
-  const comp = entry.components || {};
-  const compLabels = ["추세문맥","진입구조","확인신호","저항여유","리스크관리"];
-  const compMax    = [30,30,24,18,16];
-  let html = `<div class="entry-comp-grid">`;
-  compLabels.forEach((lbl, i) => {
-    const v   = comp[lbl] ?? 0;
-    const mx  = compMax[i];
-    const pct = Math.max(0, Math.min(100, (v/mx)*100));
-    html += `<div class="entry-comp-row">
-      <span class="ec-label">${lbl}</span>
-      <div class="ec-track"><div class="ec-fill" style="width:${pct.toFixed(0)}%"></div></div>
-      <span class="ec-val">${v.toFixed(1)}/${mx}</span>
-    </div>`;
-  });
-  html += `</div>`;
-  const ss = entry.setup_scores || {};
-  if (Object.keys(ss).length) {
-    html += `<div class="setup-scores">` +
-      Object.entries(ss).map(([k,v])=>`<span class="ss-item">${k}<b>${v.toFixed(0)}</b></span>`).join("")+
-    `</div>`;
-  }
-  const m = entry.metrics || {};
-  if (Object.keys(m).length) {
-    html += `<div class="entry-metrics-grid">` +
-      [ ["EMA괴리%", m.ema20_gap_pct?.toFixed(2)],
-        ["EMA괴리ATR",m.ema20_gap_atr?.toFixed(2)],
-        ["눌림%",    m.pullback_pct?.toFixed(1)],
-        ["반등%",    m.bounce_pct?.toFixed(1)],
-        ["범위위치",  m.range_pos?.toFixed(1)+"%"],
-        ["BB위치",   m.bb_pos?.toFixed(1)+"%"],
-        ["RSI",      m.rsi_reset?.toFixed(1)],
-        ["ADX",      m.adx?.toFixed(1)],
-      ].filter(([,v])=>v!=null).map(([k,v])=>`<div class="emg-item"><span>${k}</span><b>${v}</b></div>`).join("")+
-    `</div>`;
-  }
-  metricsEl.innerHTML = html;
-}
 
+  function compColor(v, good, danger) {
+    return v >= good ? "#2ea043" : v < danger ? "#e53935" : "#d29922";
+  }
+  function valColor(v, lo, hi, revHi) {
+    if (v >= lo && v <= hi) return "#2ea043";
+    if (revHi != null && v > revHi) return "#e53935";
+    return "#d29922";
+  }
+
+  // 시나리오 설명
+  const setupDesc = {
+    "추세 눌림":   "상승 추세 중 EMA 근처로 눌렸다가 재반등하는 구조. RSI 과열 해소 + 거래량 감소 후 반등이 핵심.",
+    "압축 돌파":   "좁은 횡보로 에너지 압축 후 거래량 동반 상단 돌파. ATR·BB 수축 후 확장 시도.",
+    "모멘텀 지속": "정배열(EMA10>20>60) 강세 추세에서 지속 상승. ROC·거래량 강세 유지가 핵심.",
+    "반전 초기":   "과매도 후 바닥 반전 초기 신호. MACD 반전 + RSI 저점 반등 + 거래량 증가 확인.",
+  };
+  const setupChips = Object.entries(setupScores)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => {
+      const cls = k === setupName ? " em-chip-best" : k === setupName2 ? " em-chip-2nd" : "";
+      return `<span class="em-chip${cls}">${k} <b>${v.toFixed(0)}</b></span>`;
+    }).join("");
+
+  // 5개 구성요소 카드
+  const compRows = [
+    { num:"①", name:"추세 문맥", v:ctx, max:30, ideal:"24 이상 최적",
+      desc: ctx>=24?"FIS·추세·ADX·구름 모두 매수 환경 충족":ctx>=16?"추세 방향 우세 — 일부 조건 미충족":ctx>=8?"중립 이상 — 추세 약세 주의":"추세 환경 부족 — 신중 접근" },
+    { num:"②", name:`진입 구조 — ${setupName}${setupName2?" + "+setupName2:""}`, v:structure, max:30, ideal:"20 이상 최적",
+      desc: setupDesc[setupName] || "—",
+      extra: `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${setupChips}</div>` },
+    { num:"③", name:"확인 신호", v:confirm, max:24, ideal:"16 이상 최적",
+      desc: confirm>=18?"EMA·MACD·거래량·기준선 신호 모두 동반":confirm>=12?"핵심 신호 대부분 확인":confirm>=6?"일부 신호만 충족 — 추가 봉 확인 권장":"명확한 진입 신호 부족" },
+    { num:"④", name:"저항 여유", v:space, max:18, ideal:"10 이상 최적",
+      desc: space>=12?"52주·BB 상단 여유 충분 — 저항 부담 낮음":space>=6?"적정 상승 공간 확인":space>=0?"일부 저항 부담 있음":"상단 저항 과부담 — 추격 불리" },
+    { num:"⑤", name:"리스크 관리", v:riskCtrl, max:16, ideal:"10 이상 최적",
+      desc: riskCtrl>=12?"과열 없고 손절 거리 적정 — 위험 관리 양호":riskCtrl>=8?"리스크 통제 가능 수준":riskCtrl>=4?"일부 위험 요소 — 손절 기준 명확히 설정":"ATR 이격 크거나 위험 감점 높음" },
+  ];
+
+  const compHTML = compRows.map(r => {
+    const pct = r.max > 0 ? Math.min(100, Math.max(0, r.v / r.max * 100)) : 0;
+    const col = compColor(r.v, r.max * 0.7, r.max * 0.3);
+    return `<div class="es-comp">
+      <div class="es-comp-hd">
+        <span class="es-comp-num">${r.num}</span>
+        <span class="es-comp-name">${r.name}</span>
+        <span class="es-comp-score" style="color:${col}">${r.v.toFixed(0)} <span class="es-comp-max">/ ${r.max}</span></span>
+      </div>
+      <div class="es-comp-bar"><div style="width:${pct.toFixed(0)}%;background:${col}"></div></div>
+      <div class="es-comp-desc">${r.desc}</div>
+      ${r.extra || ""}
+    </div>`;
+  }).join("");
+
+  // 세부 수치 요약
+  const ema20GapPct = m.ema20_gap_pct ?? 0;
+  const ema20GapAtr = m.ema20_gap_atr ?? 0;
+  const bbPos       = m.bb_pos        ?? 50;
+  const pos52       = m.range_pos     ?? 50;
+  const pbPct       = m.pullback_pct  ?? 0;
+  const rsiVal      = m.rsi_reset     ?? 50;
+  const adx         = m.adx           ?? 0;
+  const emaSign     = ema20GapPct >= 0 ? "+" : "";
+  const adxTip      = adx < 15 ? " ⚠" : "";
+
+  const metricRows = [
+    { label:"EMA20 이격", value:`${emaSign}${ema20GapPct.toFixed(1)}%`,              col:valColor(ema20GapPct,-1,4,12),    ideal:"-1~+4% 이상적" },
+    { label:"ATR 이격",   value:`${ema20GapAtr>=0?"+":""}${ema20GapAtr.toFixed(2)} ATR`, col:valColor(ema20GapAtr,-0.5,1.2,3), ideal:"-0.5~+1.2 이상적" },
+    { label:"RSI",        value:rsiVal.toFixed(1),                                   col:valColor(rsiVal,42,60,73),        ideal:"42~60 이상적" },
+    { label:"BB 위치",    value:`${bbPos.toFixed(0)}%`,                              col:valColor(bbPos,35,75,90),         ideal:"35~75% 이상적" },
+    { label:"52주 위치",  value:`${pos52.toFixed(0)}%`,                              col:valColor(pos52,55,90,97),         ideal:"55~90% 이상적" },
+    { label:"최근 조정",  value:`-${pbPct.toFixed(1)}%`,                             col:valColor(pbPct,4,12,20),          ideal:"4~12% 이상적" },
+    { label:"ADX",        value:`${adx.toFixed(1)}${adxTip}`,                        col:adx>=20?"#2ea043":adx>=15?"#d29922":"#e53935", ideal:"20+ 추세 지속력" },
+  ].map(r => `<div class="es-metric-row">
+    <span class="es-metric-label">${r.label}</span>
+    <span class="es-metric-value" style="color:${r.col}">${r.value}</span>
+    <span class="es-metric-ideal">${r.ideal}</span>
+  </div>`).join("");
+
+  metricsEl.innerHTML = compHTML +
+    `<div class="es-metric-block"><div class="es-metric-title">📐 세부 수치</div>${metricRows}</div>`;
+}
 // ── 지표 칩 ─────────────────────────────────────────────
 function renderChips(j, fisBars) {
-  const row  = fisBars[fisBars.length - 1];
-  if(!row) return;
-  const rsi  = row.RSI14;
-  const rvol = row.RVOL;
-  const atr  = row.ATR14;
-  const close= row.close;
-  const ema20= row.EMA20;
-  const ema60= row.EMA60;
-  const bb_up= row.BB_UP, bb_dn = row.BB_DN;
-  const rh   = row.RangeHigh, rl = row.RangeLow;
-  const chips = [];
-  if (rsi != null && !isNaN(rsi)) chips.push({ label:"RSI(14)", val: rsi.toFixed(1), cls: rsi>=70?"bear":rsi<=30?"bull":"" });
-  if (rvol!= null && !isNaN(rvol)) chips.push({ label:"거래량배율", val:rvol.toFixed(2)+"x", cls:rvol>=1.5?"bull":rvol<0.75?"bear":"" });
-  if (atr != null && !isNaN(atr))  chips.push({ label:"ATR(14)", val:fmt(atr,2), cls:"" });
-  if (ema20!= null && !isNaN(ema20)) chips.push({ label:"EMA20", val:fmt(ema20,0), cls:close>ema20?"bull":"bear" });
-  if (ema60!= null && !isNaN(ema60)) chips.push({ label:"EMA60", val:fmt(ema60,0), cls:close>ema60?"bull":"bear" });
-  chips.push({ label:"일목", val:j.ichimoku_status?.split("—")[0].trim()||"—", cls: j.ichimoku_status?.includes("위")?"bull":j.ichimoku_status?.includes("아래")?"bear":"" });
-  if (bb_up!=null&&bb_dn!=null&&!isNaN(bb_up)&&!isNaN(bb_dn)&&(bb_up-bb_dn)>0) {
-    const bbPos = Math.round((close-bb_dn)/(bb_up-bb_dn)*100);
-    chips.push({ label:"BB위치", val:bbPos+"%", cls: bbPos>=85?"bear":bbPos<=15?"bull":"" });
-  }
-  if (rh&&rl&&!isNaN(rh)&&!isNaN(rl)&&rh>rl) {
-    const pos52 = Math.round((close-rl)/(rh-rl)*100);
-    chips.push({ label:"52주위치", val:pos52+"%", cls: pos52>=85?"bull":pos52<=20?"bear":"" });
-  }
+  const row = fisBars[fisBars.length - 1];
+  if (!row) return;
+  const rsi   = row.RSI14, rvol = row.RVOL, atr = row.ATR14, close = row.close;
+  const bb_up = row.BB_UP, bb_dn = row.BB_DN;
+  const rh = row.RangeHigh, rl = row.RangeLow;
+
+  function rsiStatus(v)  { return v >= 70 ? "과매수" : v <= 30 ? "과매도" : "중립"; }
+  function rsiColor(v)   { return v >= 70 ? "var(--bear,#e53935)" : v <= 30 ? "var(--bull,#2ea043)" : "var(--text2,#666)"; }
+  function rvolStatus(v) { return v >= 1.5 ? "거래 급증" : v >= 1.0 ? "보통" : "거래 감소"; }
+
+  const ichParts = (j.ichimoku_status || "").split("—");
+  const ichVal = ichParts[0]?.trim() || "—";
+  const ichSub = (ichParts[1] || "").trim();
+
+  const bbPosPct = (bb_up != null && bb_dn != null && bb_up > bb_dn)
+    ? Math.round((close - bb_dn) / (bb_up - bb_dn) * 100) : null;
+  const pos52Pct = (rh && rl && rh > rl)
+    ? Math.round((close - rl) / (rh - rl) * 100) : null;
+
+  const chips = [
+    { label:"RSI(14)",  value: rsi  != null ? rsi.toFixed(1)    : "—", sub: rsi  != null ? rsiStatus(rsi)   : "", color: rsi  != null ? rsiColor(rsi)                                  : "var(--text2)" },
+    { label:"RVOL",     value: rvol != null ? rvol.toFixed(2)+"x": "—", sub: rvol != null ? rvolStatus(rvol) : "", color: rvol != null ? (rvol >= 1.5 ? "var(--bull,#2ea043)" : "var(--text2,#666)") : "var(--text2)" },
+    { label:"ATR(14)",  value: atr  != null ? fmt(atr, 2)        : "—", sub: "변동폭",                             color: "var(--text2,#666)" },
+    { label:"일목",     value: ichVal,                                   sub: ichSub,                              color: "var(--accent,#1565C0)" },
+    ...(bbPosPct != null ? [{ label:"BB 위치",   value: bbPosPct+"%",  sub: bbPosPct>=80?"상단 과열":bbPosPct<=20?"하단 저평":"중립", color: bbPosPct>=80?"var(--bear,#e53935)":bbPosPct<=20?"var(--bull,#2ea043)":"var(--text2,#666)" }] : []),
+    ...(pos52Pct != null ? [{ label:"52주 위치", value: pos52Pct+"%",  sub: pos52Pct>=95?"고점 저항권":pos52Pct>=65?"추세 상위권":"하위권", color: pos52Pct>=95?"var(--bear,#e53935)":pos52Pct>=65?"var(--bull,#2ea043)":"var(--text2,#666)" }] : []),
+  ];
+
   const chipGrid = document.getElementById("indicatorChips");
-  if (chipGrid) chipGrid.innerHTML = chips.map(c=>
-    `<div class="ind-chip ${c.cls}"><span class="ind-chip-label">${c.label}</span><span class="ind-chip-val">${c.val}</span></div>`
+  if (chipGrid) chipGrid.innerHTML = chips.map(c =>
+    `<div class="chip">
+      <span class="chip-label">${c.label}</span>
+      <span class="chip-value" style="color:${c.color}">${c.value}</span>
+      <span class="chip-sub">${c.sub}</span>
+    </div>`
   ).join("");
 }
-
-// ── 데이터 테이블 ────────────────────────────────────────
 function renderTable(fisBars) {
   const recent = fisBars.slice(-30).reverse();
   const headEl = document.getElementById("tableHead");
