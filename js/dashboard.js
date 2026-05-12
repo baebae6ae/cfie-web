@@ -1,5 +1,6 @@
-/* js/dashboard.js */
+﻿/* js/dashboard.js */
 
+// ── 지수 목록 ─────────────────────────────────────────
 const KR_INDICES = [
   { ticker: "^KS11", name: "KOSPI" },
   { ticker: "^KQ11", name: "KOSDAQ" },
@@ -14,13 +15,47 @@ const US_INDICES = [
   { ticker: "GC=F",  name: "금" },
 ];
 
-let _high52Data = {}, _h52Market = "kospi";
+// ── 섹터 목록 (engine/market.py 그대로) ─────────────
+const KR_SECTORS = [
+  ["반도체", [["005930.KS","삼성전자"],["000660.KS","SK하이닉스"],["009150.KS","삼성전기"],["034220.KS","LG디스플레이"]]],
+  ["자동차", [["005380.KS","현대차"],["000270.KS","기아"],["012330.KS","현대모비스"],["247540.KQ","에코프로비엠"]]],
+  ["화학·배터리", [["051910.KS","LG화학"],["006400.KS","삼성SDI"],["096770.KS","SK이노베이션"],["066970.KQ","엘앤에프"]]],
+  ["금융", [["055550.KS","신한지주"],["086790.KS","하나금융지주"],["024110.KS","기업은행"],["316140.KS","우리금융지주"],["032830.KS","삼성생명"],["000810.KS","삼성화재"]]],
+  ["IT·플랫폼", [["035420.KS","NAVER"],["035720.KS","카카오"],["018260.KS","삼성SDS"],["017670.KS","SK텔레콤"]]],
+  ["에너지", [["010950.KS","S-Oil"],["015760.KS","한국전력"]]],
+  ["소재·산업재", [["005490.KS","POSCO홀딩스"],["028260.KS","삼성물산"],["003550.KS","LG"],["011200.KS","HMM"],["003490.KS","대한항공"]]],
+  ["바이오·헬스", [["207940.KS","삼성바이오로직스"],["033780.KS","KT&G"],["145020.KQ","휴젤"],["196170.KQ","알테오젠"],["285130.KQ","SK바이오사이언스"]]],
+  ["게임·엔터", [["263750.KQ","펄어비스"],["041510.KQ","에스엠"],["293480.KQ","카카오게임즈"],["035900.KQ","JYP Ent."],["112040.KQ","위메이드"],["251270.KQ","넷마블"]]],
+  ["소부장", [["357780.KQ","솔브레인"],["394280.KQ","오픈엣지테크놀로지"],["140860.KQ","파크시스템스"],["095340.KQ","ISC"],["211270.KQ","AP시스템"],["039030.KQ","이오테크닉스"]]],
+];
+const US_SECTORS = [
+  ["Tech", [["AAPL","Apple"],["MSFT","Microsoft"],["NVDA","NVIDIA"],["AVGO","Broadcom"],["ORCL","Oracle"],["AMD","AMD"],["INTC","Intel"],["CRM","Salesforce"]]],
+  ["Communication", [["GOOGL","Alphabet"],["META","Meta"],["NFLX","Netflix"],["DIS","Disney"]]],
+  ["Consumer", [["AMZN","Amazon"],["TSLA","Tesla"],["HD","Home Depot"],["COST","Costco"],["WMT","Walmart"],["KO","Coca-Cola"],["PEP","PepsiCo"]]],
+  ["Finance", [["JPM","JPMorgan"],["V","Visa"],["MA","Mastercard"],["BAC","Bank of America"]]],
+  ["Healthcare", [["UNH","UnitedHealth"],["LLY","Eli Lilly"],["JNJ","J&J"],["ABBV","AbbVie"],["MRK","Merck"]]],
+  ["Energy", [["XOM","Exxon"]]],
+];
+
+// ── 이름 단축 (market.py::short_name 로직) ──────────
+function _shortName(name) {
+  if (!name) return "";
+  let s = name.replace(/홀딩스|전자/g, "").replace(/\s?(Inc\.|Corp\.|Ltd\.)/i, "").trim();
+  if (s.length > 8) s = s.slice(0, 8);
+  return s || name.slice(0, 8);
+}
+
+// ── 상태 ───────────────────────────────────────────
+const _mapCache = {};
+const _mapMode  = { KR: "sector", US: "sector" };
+let _h52Market  = "kospi";
 const _h52State = { offset: 0, limit: 10, hasMore: false, loading: false, items: [] };
+let _h52Universe = {};
+let _h52StopFlag = false;
 
 // ── 초기화 ─────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   loadMarket();
-  loadPortfolioDash();
   setTimeout(() => load52h("kospi", document.querySelector(".h52-tab")), 600);
   setTimeout(() => loadMarketMap("KR"), 800);
   setTimeout(() => loadMarketMap("US"), 900);
@@ -31,7 +66,6 @@ async function loadMarket() {
   try {
     const allTickers = [...KR_INDICES, ...US_INDICES].map(i => i.ticker);
     const quotes = await fetchMultiQuote(allTickers);
-
     renderQuotes("krQuotes", KR_INDICES, quotes, "krUpdated");
     renderQuotes("usQuotes", US_INDICES, quotes, "usUpdated");
     renderTickerStrip([...KR_INDICES, ...US_INDICES], quotes);
@@ -61,7 +95,6 @@ function renderQuotes(containerId, indices, quotes, updatedId) {
   const updEl = document.getElementById(updatedId);
   const now = new Date().toLocaleTimeString("ko-KR", {hour:"2-digit",minute:"2-digit"});
   if (updEl) updEl.textContent = now + " 기준";
-
   el.innerHTML = indices.map(idx => {
     const q   = quotes[idx.ticker] || {};
     const pct = q.changePct || 0;
@@ -88,59 +121,83 @@ function renderQuotes(containerId, indices, quotes, updatedId) {
   }).join("");
 }
 
-// ── 마켓맵 (정적 버전: 52주 신고가 종목 히트맵) ───────────
-const _mapCache = {};
-const _mapMode  = { KR: "sector", US: "sector" };
-
+// ── 마켓맵 ────────────────────────────────────────────
 async function loadMarketMap(region) {
   const bodyId = region === "KR" ? "krMapBody" : "usMapBody";
   const body   = document.getElementById(bodyId);
   if (!body) return;
-
   if (_mapCache[region]) { _drawMap(region, body, _mapCache[region]); return; }
   body.innerHTML = '<div class="map-loading">히트맵 로딩 중…</div>';
-  const market = region === "KR" ? "kospi" : "us";
+  const sectors = region === "KR" ? KR_SECTORS : US_SECTORS;
   try {
-    // 유니버스에서 종목 목록 로드
-    if (!_high52Data["_uni_" + market]) {
-      const res = await fetch(`data/universe_${market}.json`);
-      if (!res.ok) throw new Error("유니버스 없음");
-      _high52Data["_uni_" + market] = await res.json();
+    // 전체 티커 수집
+    const allTickers = sectors.flatMap(([, stocks]) => stocks.map(([t]) => t));
+    const quotes = await fetchMultiQuote(allTickers);
+    // stocks 배열 생성
+    const stocks = [];
+    const sectorAggMap = {};
+    for (const [sectorName, stockList] of sectors) {
+      const changePcts = [];
+      for (const [ticker, name] of stockList) {
+        const q = quotes[ticker] || {};
+        const changePct = q.changePct != null ? q.changePct : 0;
+        const short = _shortName(name);
+        stocks.push({ ticker, name, short, change_pct: Math.round(changePct * 100) / 100, sector: sectorName });
+        changePcts.push(changePct);
+      }
+      const avg = changePcts.length ? changePcts.reduce((a,b)=>a+b,0)/changePcts.length : 0;
+      sectorAggMap[sectorName] = { name: sectorName, change_pct: Math.round(avg * 100) / 100, count: stockList.length };
     }
-    const universe = _high52Data["_uni_" + market];
-    const sample = universe.slice(0, region === "KR" ? 50 : 30);
-    const tickers = sample.map(s => s.ticker);
-    const quotes = await fetchMultiQuote(tickers);
-
-    const data = sample.map(({ ticker, name }) => {
-      const q = quotes[ticker];
-      const changePct = q ? (q.changePct || 0) : 0;
-      // short: 이름이 길면 앞 4자, 영어면 ticker 사용
-      const short = name ? (name.length > 4 ? name.slice(0, 4) : name) : ticker;
-      return {
-        ticker,
-        name: name || ticker,
-        short,
-        change_pct: Math.round(changePct * 100) / 100,
-        sector: "기타",
-        value: 1,
-      };
-    });
-
-    _mapCache[region] = { stocks: data };
-    _drawMap(region, body, { stocks: data });
+    const sectorList = sectors.map(([name]) => sectorAggMap[name]);
+    const data = { stocks, sectors: sectorList };
+    _mapCache[region] = data;
+    _drawMap(region, body, data);
   } catch(e) {
     body.innerHTML = '<div class="map-loading" style="color:var(--neutral-500);font-size:0.8rem">히트맵 데이터 로딩 실패</div>';
   }
 }
 
+function _hmDescText(mode) {
+  return mode === "sector"
+    ? "섹터 평균 등락률 | 블록 크기 = 섹터 내 종목 수 | 색상: 초록(상승) / 빨강(하락)"
+    : "개별 종목 당일 등락률 | 섹터별로 그룹화 | 블록 크기 균등 | 색상: 초록(상승) / 빨강(하락)";
+}
+
 function _drawMap(region, body, data) {
+  const mode = _mapMode[region] || "sector";
   body.innerHTML = "";
+  // 섹터/종목 탭 바
+  const tabBar = document.createElement("div");
+  tabBar.className = "hm-tabs";
+  tabBar.innerHTML = `
+    <button class="hm-tab ${mode==="sector"?"active":""}" onclick="_switchMapMode('${region}','sector',this)">섹터</button>
+    <button class="hm-tab ${mode==="stock"?"active":""}" onclick="_switchMapMode('${region}','stock',this)">종목</button>`;
+  body.appendChild(tabBar);
+  // 설명 텍스트
+  const hmDesc = document.createElement("div");
+  hmDesc.className = "hm-desc";
+  hmDesc.id = region + "HmDesc";
+  hmDesc.textContent = _hmDescText(mode);
+  body.appendChild(hmDesc);
+  // 캔버스
   const canvas = document.createElement("div");
   canvas.className = "hm-canvas";
   body.appendChild(canvas);
-  if (typeof renderTreemap === "function") {
-    renderTreemap(canvas, data, "stock");
+  if (typeof renderTreemap === "function") renderTreemap(canvas, data, mode);
+}
+
+function _switchMapMode(region, mode, btn) {
+  _mapMode[region] = mode;
+  const bodyId = region === "KR" ? "krMapBody" : "usMapBody";
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  body.querySelectorAll(".hm-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  if (_mapCache[region]) {
+    const canvas = body.querySelector(".hm-canvas");
+    if (canvas) { canvas.innerHTML = ""; renderTreemap(canvas, _mapCache[region], mode); }
+    const descEl = body.querySelector(".hm-desc");
+    if (descEl) descEl.textContent = _hmDescText(mode);
   }
 }
 
@@ -158,37 +215,91 @@ function _update52hMoreButton() {
   }
 }
 
-// 52주 신고가 — 브라우저에서 유니버스 JSON 로드 후 실시간 OHLCV 계산
-let _h52StopFlag = false;
+// 일봉 → 주봉 리샘플 (W-FRI: 주 마지막 금요일 기준)
+function _toWeekly(bars) {
+  const weekBars = {};
+  for (const b of bars) {
+    const d = new Date(b.ts * 1000);
+    // 이번 주 금요일 날짜 구하기 (dayOfWeek: 0=일~6=토)
+    const day = d.getDay(); // 0=일 1=월 ... 5=금 6=토
+    const daysToFri = (5 - day + 7) % 7;
+    const fri = new Date(d.getTime() + daysToFri * 86400000);
+    const key = fri.toISOString().slice(0, 10);
+    if (!weekBars[key]) weekBars[key] = { time: key, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume };
+    else {
+      weekBars[key].high   = Math.max(weekBars[key].high,   b.high);
+      weekBars[key].low    = Math.min(weekBars[key].low,    b.low);
+      weekBars[key].close  = b.close;
+      weekBars[key].volume += b.volume;
+    }
+  }
+  return Object.keys(weekBars).sort().map(k => weekBars[k]);
+}
+
+async function _check52h(ticker, name) {
+  try {
+    const { bars } = await fetchOHLCV(ticker, "2y", "1d");
+    if (!bars || bars.length < 30) return null;
+    // 주봉 리샘플
+    const weekly = _toWeekly(bars);
+    if (weekly.length < 10) return null;
+    const wCloses = weekly.map(b => b.close);
+    // 52주 고점 rolling max (52봉, min_periods=10)
+    const high52Arr = [];
+    for (let i = 0; i < wCloses.length; i++) {
+      const start = Math.max(0, i - 51);
+      const window = wCloses.slice(start, i + 1);
+      if (window.length < 10) { high52Arr.push(NaN); continue; }
+      high52Arr.push(Math.max(...window));
+    }
+    const lastIdx = wCloses.length - 1;
+    const close_w = wCloses[lastIdx];
+    const high52  = high52Arr[lastIdx];
+    if (!high52 || isNaN(high52)) return null;
+    // at_high: 현재 주봉 종가가 52주 고점의 98.5% 이상
+    if (close_w < high52 * 0.985) return null;
+    // streak: 끝에서부터 at_high 연속 횟수
+    let streak = 0;
+    for (let i = lastIdx; i >= 0; i--) {
+      const h = high52Arr[i];
+      if (!h || isNaN(h)) break;
+      if (wCloses[i] >= h * 0.985) streak++;
+      else break;
+    }
+    // gap_pct: 현재가 vs 52주 고점
+    const gap_pct = (close_w - high52) / high52 * 100;
+    // day_pct: 마지막 2개 일봉 기준
+    const dClose = bars[bars.length - 1].close;
+    const dPrev  = bars.length >= 2 ? bars[bars.length - 2].close : dClose;
+    const day_pct = dPrev > 0 ? (dClose - dPrev) / dPrev * 100 : 0;
+    return { ticker, name, close: dClose, high52, gap_pct, streak, day_pct };
+  } catch { return null; }
+}
 
 async function load52h(market, btn) {
   document.querySelectorAll(".h52-tab").forEach(b => b.classList.remove("active"));
   if (btn) btn.classList.add("active");
   _h52Market = market;
-  _h52StopFlag = true;  // 이전 스캔 중지
+  _h52StopFlag = true;
   await new Promise(r => setTimeout(r, 50));
   _h52StopFlag = false;
-
   const grid = document.getElementById("high52Grid");
   grid.innerHTML = '<div class="high52-loading">실시간 조회 중… (Yahoo Finance)</div>';
   _h52State.items = [];
+  _h52State.offset = 0;
   _h52State.hasMore = false;
   _update52hMoreButton();
-
   try {
-    // 유니버스 로드 (종목 리스트)
-    if (!_high52Data["_uni_" + market]) {
+    if (!_h52Universe[market]) {
       const res = await fetch(`data/universe_${market}.json`);
       if (!res.ok) throw new Error("유니버스 없음");
-      _high52Data["_uni_" + market] = await res.json();
+      _h52Universe[market] = await res.json();
     }
-    const universe = _high52Data["_uni_" + market];
-    const MAX = 15;
+    const universe = _h52Universe[market];
     const BATCH = 3;
     const results = [];
     grid.innerHTML = "";
-
-    for (let i = 0; i < universe.length && results.length < MAX && !_h52StopFlag; i += BATCH) {
+    for (let i = 0; i < universe.length && results.length < 10 && !_h52StopFlag; i += BATCH) {
       const batch = universe.slice(i, i + BATCH);
       const settled = await Promise.allSettled(
         batch.map(({ ticker, name }) => _check52h(ticker, name))
@@ -196,222 +307,103 @@ async function load52h(market, btn) {
       for (const r of settled) {
         if (r.status === "fulfilled" && r.value) {
           results.push(r.value);
-          // 실시간으로 카드 추가
           const tmp = document.createElement("div");
           tmp.innerHTML = _render52hCard(r.value);
           grid.appendChild(tmp.firstElementChild);
         }
       }
     }
-
+    _h52State.items = results;
+    _h52State.offset = results.length;
+    // 더보기: 아직 스캔 안 된 종목이 남아있으면 true
+    // universe에서 스캔한 범위를 기록하기 위해 offset을 universe 인덱스로 추적
+    // 현재는 최대 10개 완료 후 더보기 지원
+    // _h52State에 universe index를 저장
+    _h52State._uniOffset = universe.length < 10 ? universe.length : results.length * 3; // 대략값
+    _h52State.hasMore = _h52State._uniOffset < universe.length && results.length >= 10;
     if (!results.length) {
       grid.innerHTML = '<div class="high52-empty">해당 시장에서 52주 신고가 종목을 찾지 못했습니다.</div>';
     }
-    _h52State.hasMore = false;
     _update52hMoreButton();
   } catch(e) {
-    grid.innerHTML = `<div class="high52-empty">오류: ${e.message}</div>`;
-    _update52hMoreButton();
+    grid.innerHTML = '<div class="high52-empty">조회 오류: ' + e.message + '</div>';
   }
 }
 
-async function _check52h(ticker, name) {
+async function loadMore52h() {
+  if (_h52State.loading) return;
+  _h52State.loading = true;
+  const btn = document.getElementById("high52MoreBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "로딩 중…"; }
+  const grid = document.getElementById("high52Grid");
+  const market = _h52Market;
   try {
-    const { bars } = await fetchOHLCV(ticker, "1y", "1d");
-    if (!bars || bars.length < 30) return null;
-    const closes = bars.map(b => b.close);
-    const highs  = bars.map(b => b.high);
-    const vols   = bars.map(b => b.volume);
-    const high52 = Math.max(...highs);
-    const last   = bars[bars.length - 1];
-    const prev   = bars[bars.length - 2];
-    const close  = last.close;
-    const gap    = (close - high52) / high52 * 100;
-    if (gap < -5) return null; // 52주 고점 대비 5% 이상 아래면 제외
-    const dayChg = prev ? (close - prev.close) / prev.close * 100 : 0;
-    const avgVol = vols.slice(-21, -1).reduce((a,b)=>a+b,0) / 20;
-    const volRatio = avgVol > 0 ? vols[vols.length-1] / avgVol : 1;
-    return { ticker, name, close, high52, gap, dayChg, volRatio, streak: 0 };
-  } catch { return null; }
+    if (!_h52Universe[market]) {
+      const res = await fetch(`data/universe_${market}.json`);
+      if (!res.ok) throw new Error("유니버스 없음");
+      _h52Universe[market] = await res.json();
+    }
+    const universe = _h52Universe[market];
+    const BATCH = 3;
+    const newResults = [];
+    let startIdx = _h52State._uniOffset || _h52State.items.length * 3;
+    for (let i = startIdx; i < universe.length && newResults.length < 10 && !_h52StopFlag; i += BATCH) {
+      const batch = universe.slice(i, i + BATCH);
+      const settled = await Promise.allSettled(
+        batch.map(({ ticker, name }) => _check52h(ticker, name))
+      );
+      for (const r of settled) {
+        if (r.status === "fulfilled" && r.value) {
+          newResults.push(r.value);
+          const tmp = document.createElement("div");
+          tmp.innerHTML = _render52hCard(r.value);
+          grid.appendChild(tmp.firstElementChild);
+        }
+      }
+      startIdx = i + BATCH;
+    }
+    _h52State.items.push(...newResults);
+    _h52State._uniOffset = startIdx;
+    _h52State.hasMore = startIdx < universe.length && newResults.length >= 10;
+    if (!newResults.length && _h52State.items.length) {
+      // 더 이상 종목 없음
+      const note = document.createElement("div");
+      note.className = "high52-empty";
+      note.style.marginTop = "8px";
+      note.textContent = "더 이상 신고가 종목이 없습니다.";
+      grid.appendChild(note);
+    }
+  } catch(e) {}
+  _h52State.loading = false;
+  _update52hMoreButton();
 }
 
-async function loadMore52h() {
-  // 실시간 모드에서는 더보기 미지원 (전체 스캔 후 결과 고정)
+function _render52hCard(s) {
+  const dayCls  = (s.day_pct || 0) >= 0 ? "bull" : "bear";
+  const daySign = (s.day_pct || 0) >= 0 ? "+" : "";
+  const gap_pct = s.gap_pct ?? 0;
+  const gapCls  = gap_pct >= 0 ? "bull" : "bear";
+  const gapSign = gap_pct >= 0 ? "+" : "";
+  const streak  = s.streak || 0;
+  const strColor = streak >= 8 ? "#F59E0B" : streak >= 4 ? "#818CF8" : "#22D3EE";
+  return `
+    <div class="h52-card" onclick="goAnalyze('${s.ticker}')" role="button" tabindex="0">
+      <div class="h52-top">
+        <div>
+          <div class="h52-name">${s.name}</div>
+          <div class="h52-ticker">${s.ticker}</div>
+        </div>
+        <div class="h52-streak" style="background:${strColor}22;color:${strColor};border-color:${strColor}55">${streak}주 연속</div>
+      </div>
+      <div class="h52-price">${fmt(s.close)}</div>
+      <div class="h52-meta">
+        <div class="h52-meta-item"><span class="h52-meta-label">52주 고점</span><span class="h52-meta-val">${fmt(s.high52)}</span></div>
+        <div class="h52-meta-item"><span class="h52-meta-label">고점 대비</span><span class="h52-meta-val ${gapCls}">${gapSign}${gap_pct.toFixed(1)}%</span></div>
+        <div class="h52-meta-item"><span class="h52-meta-label">당일 등락</span><span class="h52-meta-val ${dayCls}">${daySign}${(s.day_pct||0).toFixed(2)}%</span></div>
+      </div>
+    </div>`;
 }
 
 function render52hGrid(grid, stocks) {
   grid.innerHTML = stocks.map(_render52hCard).join("");
 }
-
-function _render52hCard(s) {
-    const dayCls  = (s.dayChg || 0) >= 0 ? "bull" : "bear";
-    const daySign = (s.dayChg || 0) >= 0 ? "+" : "";
-    const gap     = s.gap ?? 0;
-    const gapCls  = gap >= 0 ? "bull" : "bear";
-    const gapSign = gap >= 0 ? "+" : "";
-    const streak  = s.streak || 0;
-    const strColor = streak >= 8 ? "#F59E0B" : streak >= 4 ? "#818CF8" : "#22D3EE";
-    const price = s.close || s.price || 0;
-    const high52 = s.high52 || s.high || 0;
-    return `
-      <div class="h52-card" onclick="goAnalyze('${s.ticker}')" role="button" tabindex="0">
-        <div class="h52-top">
-          <div>
-            <div class="h52-name">${s.name}</div>
-            <div class="h52-ticker">${s.ticker}</div>
-          </div>
-          ${streak > 0 ? `<div class="h52-streak" style="background:${strColor}22;color:${strColor};border-color:${strColor}55">${streak}주 연속</div>` : ""}
-        </div>
-        <div class="h52-price">${fmt(price, 0)}</div>
-        <div class="h52-meta">
-          <div class="h52-meta-item">
-            <span class="h52-meta-label">52주 고점</span>
-            <span class="h52-meta-val">${fmt(high52, 0)}</span>
-          </div>
-          <div class="h52-meta-item">
-            <span class="h52-meta-label">고점 대비</span>
-            <span class="h52-meta-val ${gapCls}">${gapSign}${gap.toFixed(1)}%</span>
-          </div>
-          <div class="h52-meta-item">
-            <span class="h52-meta-label">당일 등락</span>
-            <span class="h52-meta-val ${dayCls}">${daySign}${(s.dayChg || 0).toFixed(2)}%</span>
-          </div>
-        </div>
-      </div>`;
-}
-
-// ── 포트폴리오 (localStorage) ───────────────────────────
-async function loadPortfolioDash() {
-  const wrap = document.getElementById("portfolioWrap");
-  if (!wrap) return;
-  const portfolio = portfolioLoad();
-  const positions = Object.values(portfolio);
-  if (!positions.length) {
-    renderEmptyPortfolio(wrap);
-    return;
-  }
-  // 현재가 조회
-  try {
-    const tickers = positions.map(p => p.ticker);
-    const quotes  = await fetchMultiQuote(tickers);
-    let totalCost = 0, totalValue = 0;
-    const rows = positions.map(p => {
-      const q = quotes[p.ticker] || {};
-      const cur = q.price || p.cost;
-      const value  = cur * p.qty;
-      const cost   = p.cost * p.qty;
-      const profit = value - cost;
-      const pct    = cost > 0 ? (profit / cost * 100) : 0;
-      totalCost  += cost;
-      totalValue += value;
-      const pCls  = profit >= 0 ? "pt-bull" : "pt-bear";
-      const sign  = profit >= 0 ? "+" : "";
-      const dPct  = q.changePct || 0;
-      const dSign = dPct >= 0 ? "+" : "";
-      return `<tr>
-        <td><div class="pt-name">${p.name}</div><div class="pt-ticker">${p.ticker}</div></td>
-        <td>${p.qty.toLocaleString("ko-KR")}</td>
-        <td>${fmt(p.cost, 0)}</td>
-        <td><div>${fmt(cur, 0)}</div><div style="font-size:11px;color:${dPct>=0?"var(--bull)":"var(--bear)"}">${dSign}${dPct.toFixed(2)}%</div></td>
-        <td>${fmt(value, 0)}</td>
-        <td class="${pCls}">${sign}${fmt(profit, 0)}</td>
-        <td class="${pCls}">${sign}${pct.toFixed(2)}%</td>
-        <td><div class="pt-actions">
-          <button class="pt-btn pt-btn-analyze" onclick="goAnalyze('${p.ticker}')">분석</button>
-          <button class="pt-btn pt-btn-buy"     onclick="openDashTradeModal('buy','${p.ticker}','${p.name}',${cur},${p.qty})">추가매수</button>
-          <button class="pt-btn pt-btn-sell"    onclick="openDashTradeModal('sell','${p.ticker}','${p.name}',${cur},${p.qty})">매도</button>
-        </div></td>
-      </tr>`;
-    }).join("");
-    const totalProfit = totalValue - totalCost;
-    const totalPct    = totalCost > 0 ? (totalProfit / totalCost * 100) : 0;
-    const totCls      = totalProfit >= 0 ? "bull" : "bear";
-    wrap.innerHTML = `
-      <div class="portfolio-wrap">
-        <div class="portfolio-summary">
-          <div class="ps-item"><div class="ps-label">총 투자금액</div><div class="ps-value">${fmt(totalCost,0)}</div></div>
-          <div class="ps-item"><div class="ps-label">총 평가금액</div><div class="ps-value">${fmt(totalValue,0)}</div></div>
-          <div class="ps-item"><div class="ps-label">총 손익</div><div class="ps-value ${totCls}">${totalProfit>=0?"+":""}${fmt(totalProfit,0)}</div></div>
-          <div class="ps-item"><div class="ps-label">수익률</div><div class="ps-value ${totCls}">${totalProfit>=0?"+":""}${totalPct.toFixed(2)}%</div></div>
-        </div>
-        <div class="ptable-wrap">
-          <table class="portfolio-table">
-            <thead><tr>
-              <th style="text-align:left">종목</th><th>수량</th><th>평단가</th>
-              <th>현재가</th><th>평가금액</th><th>손익</th><th>수익률</th><th></th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      </div>`;
-  } catch(e) { renderEmptyPortfolio(wrap); }
-}
-
-function renderEmptyPortfolio(wrap) {
-  wrap.innerHTML = `
-    <div class="portfolio-wrap">
-      <div class="empty-portfolio">
-        <div class="ep-icon">📭</div>
-        <div class="ep-title">보유 종목이 없습니다</div>
-        <div class="ep-sub">신규 진입 종목 찾기에서 종목을 추가해보세요</div>
-        <a href="scan.html" class="ep-scan-btn">신규 진입 종목 찾기 →</a>
-      </div>
-    </div>`;
-}
-
-// ── 대시보드 트레이드 모달 ─────────────────────────────
-let _dashTrade = { type: "buy", ticker: "", name: "", currentPrice: 0, maxQty: 0 };
-
-function openDashTradeModal(type, ticker, name, currentPrice, maxQty) {
-  _dashTrade = { type, ticker, name, currentPrice: Number(currentPrice||0), maxQty: Number(maxQty||0) };
-  const modal    = document.getElementById("dashTradeModal");
-  const title    = document.getElementById("dashTradeTitle");
-  const sub      = document.getElementById("dashTradeSub");
-  const qty      = document.getElementById("dashTradeQty");
-  const priceRow = document.getElementById("dashTradePriceRow");
-  const price    = document.getElementById("dashTradePrice");
-  const helper   = document.getElementById("dashTradeHelper");
-  const confirm  = document.getElementById("dashTradeConfirm");
-  if (!modal) return;
-  const isBuy = type === "buy";
-  title.textContent   = isBuy ? "추가 매수" : "매도";
-  sub.textContent     = `${name} (${ticker})`;
-  qty.value           = "1";
-  price.value         = String(Math.round(_dashTrade.currentPrice));
-  priceRow.style.display = isBuy ? "grid" : "none";
-  helper.textContent  = isBuy
-    ? `현재가: ${Math.round(_dashTrade.currentPrice).toLocaleString("ko-KR")}원`
-    : `보유 수량: ${_dashTrade.maxQty}주`;
-  confirm.textContent = isBuy ? "매수 등록" : "매도 실행";
-  modal.style.display = "flex";
-  qty.focus();
-}
-
-function closeDashTradeModal() {
-  const modal = document.getElementById("dashTradeModal");
-  if (modal) modal.style.display = "none";
-}
-
-function confirmDashTrade() {
-  const qty = parseInt(document.getElementById("dashTradeQty")?.value || "0", 10);
-  if (!qty || qty < 1) { showToast("유효한 수량을 입력하세요.", "error"); return; }
-  const isBuy = _dashTrade.type === "buy";
-  if (!isBuy && qty > _dashTrade.maxQty) { showToast("보유 수량보다 많은 매도는 불가합니다.", "error"); return; }
-  if (isBuy) {
-    const price = parseFloat(document.getElementById("dashTradePrice")?.value || "0");
-    if (!price || price <= 0) { showToast("유효한 매수가를 입력하세요.", "error"); return; }
-    portfolioBuy(_dashTrade.ticker, _dashTrade.name, qty, price);
-    showToast(`${_dashTrade.name} ${qty}주 추가매수 완료`);
-  } else {
-    portfolioSell(_dashTrade.ticker, qty);
-    showToast(`${_dashTrade.name} ${qty}주 매도 완료`);
-  }
-  closeDashTradeModal();
-  loadPortfolioDash();
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("dashTradeModal")?.addEventListener("click", e => {
-    if (e.target?.id === "dashTradeModal") closeDashTradeModal();
-  });
-});
