@@ -2,6 +2,7 @@
 
 let _chart     = null;
 let _volChart  = null;
+let _macdChart = null;
 let _currentTicker = null;
 
 // ── 초기화 ──────────────────────────────────────────────
@@ -117,8 +118,28 @@ function renderChart(bars, fisBars, tf) {
     _volChart.addHistogramSeries({priceFormat:{type:"volume"}}).setData(bars.map(b=>({time:b.time, value:b.volume, color:b.close>=b.open?"#CC000055":"#0047AB55"})));
     _chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(r&&_volChart) _volChart.timeScale().setVisibleLogicalRange(r); });
   }
+
+  // MACD 패널
+  const macdEl = document.getElementById("macdChartEl");
+  if (macdEl) {
+    macdEl.innerHTML = "";
+    _macdChart = LightweightCharts.createChart(macdEl, { ...baseOpts, width:macdEl.clientWidth||600, height:80, timeScale:{borderColor:"#ccc",timeVisible:tf!=="1d"} });
+    _macdChart.priceScale("right").applyOptions({ scaleMargins:{top:0.1,bottom:0.1} });
+    const macdData = fisBars.map(b=>b.MACD!=null&&!isNaN(b.MACD)?{time:b.time,value:b.MACD}:null).filter(Boolean);
+    const signalData = fisBars.map(b=>b.MACD_SIGNAL!=null&&!isNaN(b.MACD_SIGNAL)?{time:b.time,value:b.MACD_SIGNAL}:null).filter(Boolean);
+    const histData = fisBars.map(b=>{
+      if (b.MACD==null||b.MACD_SIGNAL==null||isNaN(b.MACD)||isNaN(b.MACD_SIGNAL)) return null;
+      const hist = b.MACD - b.MACD_SIGNAL;
+      return {time:b.time, value:hist, color:hist>=0?"#CC000088":"#0047AB88"};
+    }).filter(Boolean);
+    if (histData.length) _macdChart.addHistogramSeries({priceFormat:{type:"price"},title:"MACD Hist"}).setData(histData);
+    if (macdData.length) _macdChart.addLineSeries({color:"#CC0000",lineWidth:1,title:"MACD"}).setData(macdData);
+    if (signalData.length) _macdChart.addLineSeries({color:"#1565C0",lineWidth:1,title:"Signal"}).setData(signalData);
+    _chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(r&&_macdChart) _macdChart.timeScale().setVisibleLogicalRange(r); });
+  }
+
   _chart.timeScale().fitContent();
-  const ro = new ResizeObserver(()=>{ if(_chart) _chart.applyOptions({width:mainEl.clientWidth}); if(_volChart&&volEl) _volChart.applyOptions({width:volEl.clientWidth}); });
+  const ro = new ResizeObserver(()=>{ if(_chart) _chart.applyOptions({width:mainEl.clientWidth}); if(_volChart&&volEl) _volChart.applyOptions({width:volEl.clientWidth}); if(_macdChart&&macdEl) _macdChart.applyOptions({width:macdEl.clientWidth}); });
   ro.observe(mainEl);
 }
 

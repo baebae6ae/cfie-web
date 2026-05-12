@@ -221,7 +221,10 @@ function _renderStockMap(container, data, cw, ch) {
       lbl.setAttribute("font-size", "9");
       lbl.setAttribute("font-weight", "600");
       lbl.setAttribute("font-family", "'Noto Sans KR', sans-serif");
-      lbl.textContent = sector.name;
+      // 너비에 맞게 섹터 이름 자르기 (SVG 텍스트는 overflow가 없음)
+      const maxChars = Math.max(4, Math.floor(w / 10));
+      const lblTxt = sector.name.length > maxChars ? sector.name.slice(0, maxChars) + '…' : sector.name;
+      lbl.textContent = lblTxt;
       svg.appendChild(lbl);
     }
 

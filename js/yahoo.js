@@ -77,13 +77,19 @@ async function fetchQuote(ticker) {
     const json = await _fetch(url);
     const meta = json?.chart?.result?.[0]?.meta;
     if (!meta) return null;
-    const prev = meta.previousClose || meta.chartPreviousClose || meta.regularMarketPrice;
+    const prev = meta.previousClose || meta.chartPreviousClose;
+    // regularMarketChangePercent 우선 사용 (Yahoo 직접 계산값)
+    const price = meta.regularMarketPrice;
+    const changePctDirect = meta.regularMarketChangePercent;
+    const changePct = changePctDirect != null
+      ? changePctDirect
+      : (prev != null && prev > 0 ? (price - prev) / prev * 100 : 0);
     return {
       ticker,
-      price:     meta.regularMarketPrice,
+      price,
       prev,
-      change:    meta.regularMarketPrice - prev,
-      changePct: prev > 0 ? (meta.regularMarketPrice - prev) / prev * 100 : 0,
+      change:    prev != null ? price - prev : (meta.regularMarketChange || 0),
+      changePct,
       currency:  meta.currency,
       name:      meta.shortName || meta.longName || ticker,
     };

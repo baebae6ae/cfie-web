@@ -298,6 +298,7 @@ async function load52h(market, btn) {
     const universe = _h52Universe[market];
     const BATCH = 3;
     const results = [];
+    let _h52ScanIdx = 0;
     grid.innerHTML = "";
     for (let i = 0; i < universe.length && results.length < 10 && !_h52StopFlag; i += BATCH) {
       const batch = universe.slice(i, i + BATCH);
@@ -312,15 +313,12 @@ async function load52h(market, btn) {
           grid.appendChild(tmp.firstElementChild);
         }
       }
+      _h52ScanIdx = i + BATCH;
     }
     _h52State.items = results;
     _h52State.offset = results.length;
-    // 더보기: 아직 스캔 안 된 종목이 남아있으면 true
-    // universe에서 스캔한 범위를 기록하기 위해 offset을 universe 인덱스로 추적
-    // 현재는 최대 10개 완료 후 더보기 지원
-    // _h52State에 universe index를 저장
-    _h52State._uniOffset = universe.length < 10 ? universe.length : results.length * 3; // 대략값
-    _h52State.hasMore = _h52State._uniOffset < universe.length && results.length >= 10;
+    _h52State._uniOffset = _h52ScanIdx;
+    _h52State.hasMore = _h52ScanIdx < universe.length && results.length >= 10;
     if (!results.length) {
       grid.innerHTML = '<div class="high52-empty">해당 시장에서 52주 신고가 종목을 찾지 못했습니다.</div>';
     }
