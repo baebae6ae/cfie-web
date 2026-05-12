@@ -1,4 +1,4 @@
-/* js/analyze.js  —  CFIE v4.0  (차트 크기 및 로딩 순서 개선 버전) */
+﻿/* js/analyze.js  —  CFIE v4.0  (차트 크기 및 로딩 순서 개선 버전) */
 
 let _chart     = null;
 let _volChart  = null;
@@ -49,7 +49,7 @@ async function loadChart(ticker) {
     main.style.display    = "block";
 
     renderStockHeader(_currentTicker, meta, bars, judgment);
-    renderChart(bars, fisBars, tf); // 이제 main이 보이고 있으므로 너비가 정확함
+    renderChart(bars, fisBars, tf, meta); // 이제 main이 보이고 있으므로 너비가 정확함
     renderJudgment(judgment);
     renderEntryScore(entry);
     renderChips(judgment, fisBars);
@@ -94,7 +94,7 @@ function renderStockHeader(ticker, meta, bars, judgment) {
 }
 
 // ── 차트 렌더 ────────────────────────────────────────────
-function renderChart(bars, fisBars, tf) {
+function renderChart(bars, fisBars, tf, meta) {
   const mainEl = document.getElementById("mainChartEl");
   const volEl  = document.getElementById("volChartEl");
   const macdEl = document.getElementById("macdChartEl");
