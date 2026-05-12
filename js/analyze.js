@@ -1,4 +1,4 @@
-﻿/* js/analyze.js  —  CFIE v4.0  (매수/매도 기능 없음) */
+﻿/* js/analyze.js  —  CFIE v4.0  (차트 크기 및 로딩 순서 개선 버전) */
 
 let _chart     = null;
 let _volChart  = null;
@@ -23,28 +23,38 @@ async function loadChart(ticker) {
   _currentTicker = ticker.toUpperCase();
   const overlay = document.getElementById("loadingOverlay");
   const main    = document.getElementById("analyzeMain");
+  
   overlay.style.display = "flex";
   main.style.display    = "none";
+
   try {
     const tf     = document.getElementById("timeframeSelect")?.value || "1d";
     const period = document.getElementById("periodSelect")?.value    || "2y";
     const { bars, meta } = await fetchOHLCV(_currentTicker, period, tf);
-    if (!bars.length) { showToast("데이터 없음", "error"); overlay.style.display="none"; main.style.display="block"; return; }
+    
+    if (!bars.length) { 
+      showToast("데이터 없음", "error"); 
+      overlay.style.display="none"; 
+      main.style.display="block"; 
+      return; 
+    }
 
     const enriched = calcIndicators(bars);
     const fisBars  = calcFIS(enriched);
     const entry    = calcEntryScore(fisBars);
     const judgment = makeJudgment(fisBars);
 
+    // [중요 수정] 차트를 그리기 전에 화면에 먼저 표시해야 정확한 너비 계산이 가능함
+    overlay.style.display = "none";
+    main.style.display    = "block";
+
     renderStockHeader(_currentTicker, meta, bars, judgment);
-    renderChart(bars, fisBars, tf);
+    renderChart(bars, fisBars, tf); // 이제 main이 보이고 있으므로 너비가 정확함
     renderJudgment(judgment);
     renderEntryScore(entry);
     renderChips(judgment, fisBars);
     renderTable(fisBars);
 
-    overlay.style.display = "none";
-    main.style.display    = "block";
   } catch(e) {
     console.error(e);
     showToast("차트 로드 실패: " + e.message, "error");
@@ -69,7 +79,7 @@ function renderStockHeader(ticker, meta, bars, judgment) {
   _set("stockTicker",   ticker);
   _set("stockExchange", meta?.exchangeName || meta?.fullExchangeName || "");
   _set("stockCurrency", meta?.currency || "");
-  _set("stockPrice",    fmt(last.close, dec));
+  _set("stockPrice",     fmt(last.close, dec));
   const dayChgEl = document.getElementById("stockDayChg");
   if (dayChgEl) {
     dayChgEl.textContent = `${sign}${chgAbs.toFixed(dec)} (${sign}${chgPct.toFixed(2)}%)`;
@@ -87,13 +97,37 @@ function renderStockHeader(ticker, meta, bars, judgment) {
 function renderChart(bars, fisBars, tf) {
   const mainEl = document.getElementById("mainChartEl");
   const volEl  = document.getElementById("volChartEl");
+  const macdEl = document.getElementById("macdChartEl");
+
   if (!mainEl || typeof LightweightCharts === "undefined") return;
-  mainEl.innerHTML = ""; if(volEl) volEl.innerHTML = "";
+
+  // 기존 차트 제거
+  mainEl.innerHTML = ""; if(volEl) volEl.innerHTML = ""; if(macdEl) macdEl.innerHTML = "";
+
   const bg  = getComputedStyle(document.documentElement).getPropertyValue("--newsprint-bg").trim()  || "#F9F9F7";
   const txt = getComputedStyle(document.documentElement).getPropertyValue("--newsprint-ink").trim() || "#111111";
-  const baseOpts = { layout:{ background:{color:bg}, textColor:txt }, grid:{ vertLines:{color:"#e8e8e5"}, horzLines:{color:"#e8e8e5"} }, rightPriceScale:{borderColor:"#ccc"} };
-  _chart = LightweightCharts.createChart(mainEl, { ...baseOpts, width: mainEl.clientWidth||600, height:400, timeScale:{borderColor:"#ccc",timeVisible:tf!=="1d"} });
-  const candles = _chart.addCandlestickSeries({ upColor:"#CC0000", downColor:"#0047AB", borderUpColor:"#CC0000", borderDownColor:"#0047AB", wickUpColor:"#CC0000", wickDownColor:"#0047AB" });
+  
+  // 부모 컨테이너 너비 가져오기 (없으면 800px 기본)
+  const containerWidth = mainEl.clientWidth || 800;
+
+  const baseOpts = { 
+    layout:{ background:{color:bg}, textColor:txt }, 
+    grid:{ vertLines:{color:"#e8e8e5"}, horzLines:{color:"#e8e8e5"} }, 
+    rightPriceScale:{borderColor:"#ccc"} 
+  };
+
+  // [수정] 메인 차트 높이를 400 -> 500으로 상향
+  _chart = LightweightCharts.createChart(mainEl, { 
+    ...baseOpts, 
+    width: containerWidth, 
+    height: 500, 
+    timeScale:{borderColor:"#ccc", timeVisible:tf!=="1d"} 
+  });
+
+  const candles = _chart.addCandlestickSeries({ 
+    upColor:"#CC0000", downColor:"#0047AB", borderUpColor:"#CC0000", 
+    borderDownColor:"#0047AB", wickUpColor:"#CC0000", wickDownColor:"#0047AB" 
+  });
   candles.setData(bars.map(b => ({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close})));
 
   const toSeries = (arr, key, col, width, title) => {
@@ -106,24 +140,33 @@ function renderChart(bars, fisBars, tf) {
   toSeries(fisBars,"ICH_TENKAN","#0047AB",1,"전환");
   toSeries(fisBars,"ICH_KIJUN","#CC0000",1,"기준");
 
-  // 볼린저밴드 상단/하단만 표시 (점선)
+  // 볼린저밴드 상단/하단
   const bbUp = fisBars.map(b=>b.BB_UP!=null&&!isNaN(b.BB_UP)?{time:b.time,value:b.BB_UP}:null).filter(Boolean);
   const bbDn = fisBars.map(b=>b.BB_DN!=null&&!isNaN(b.BB_DN)?{time:b.time,value:b.BB_DN}:null).filter(Boolean);
   if (bbUp.length) _chart.addLineSeries({color:"rgba(150,150,150,0.5)",lineWidth:1,lineStyle:2,title:"BB"}).setData(bbUp);
   if (bbDn.length) _chart.addLineSeries({color:"rgba(150,150,150,0.5)",lineWidth:1,lineStyle:2}).setData(bbDn);
 
   if (volEl) {
-    _volChart = LightweightCharts.createChart(volEl, { ...baseOpts, width:volEl.clientWidth||600, height:100, timeScale:{borderColor:"#ccc",timeVisible:tf!=="1d"} });
+    _volChart = LightweightCharts.createChart(volEl, { 
+      ...baseOpts, 
+      width: containerWidth, 
+      height: 120, // 높이 소폭 상향
+      timeScale:{borderColor:"#ccc", timeVisible:tf!=="1d"} 
+    });
     _volChart.priceScale("right").applyOptions({ scaleMargins:{top:0.1,bottom:0} });
     _volChart.addHistogramSeries({priceFormat:{type:"volume"}}).setData(bars.map(b=>({time:b.time, value:b.volume, color:b.close>=b.open?"#CC000055":"#0047AB55"})));
+    
+    // 시간축 동기화
     _chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(r&&_volChart) _volChart.timeScale().setVisibleLogicalRange(r); });
   }
 
-  // MACD 패널
-  const macdEl = document.getElementById("macdChartEl");
   if (macdEl) {
-    macdEl.innerHTML = "";
-    _macdChart = LightweightCharts.createChart(macdEl, { ...baseOpts, width:macdEl.clientWidth||600, height:80, timeScale:{borderColor:"#ccc",timeVisible:tf!=="1d"} });
+    _macdChart = LightweightCharts.createChart(macdEl, { 
+      ...baseOpts, 
+      width: containerWidth, 
+      height: 100, // 높이 소폭 상향
+      timeScale:{borderColor:"#ccc", timeVisible:tf!=="1d"} 
+    });
     _macdChart.priceScale("right").applyOptions({ scaleMargins:{top:0.1,bottom:0.1} });
     const macdData = fisBars.map(b=>b.MACD!=null&&!isNaN(b.MACD)?{time:b.time,value:b.MACD}:null).filter(Boolean);
     const signalData = fisBars.map(b=>b.MACD_SIGNAL!=null&&!isNaN(b.MACD_SIGNAL)?{time:b.time,value:b.MACD_SIGNAL}:null).filter(Boolean);
@@ -135,11 +178,21 @@ function renderChart(bars, fisBars, tf) {
     if (histData.length) _macdChart.addHistogramSeries({priceFormat:{type:"price"},title:"MACD Hist"}).setData(histData);
     if (macdData.length) _macdChart.addLineSeries({color:"#CC0000",lineWidth:1,title:"MACD"}).setData(macdData);
     if (signalData.length) _macdChart.addLineSeries({color:"#1565C0",lineWidth:1,title:"Signal"}).setData(signalData);
+    
+    // 시간축 동기화
     _chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(r&&_macdChart) _macdChart.timeScale().setVisibleLogicalRange(r); });
   }
 
   _chart.timeScale().fitContent();
-  const ro = new ResizeObserver(()=>{ if(_chart) _chart.applyOptions({width:mainEl.clientWidth}); if(_volChart&&volEl) _volChart.applyOptions({width:volEl.clientWidth}); if(_macdChart&&macdEl) _macdChart.applyOptions({width:macdEl.clientWidth}); });
+
+  // 리사이즈 대응
+  const ro = new ResizeObserver(() => {
+    const newWidth = mainEl.clientWidth;
+    if (newWidth === 0) return;
+    if(_chart) _chart.applyOptions({ width: newWidth });
+    if(_volChart) _volChart.applyOptions({ width: newWidth });
+    if(_macdChart) _macdChart.applyOptions({ width: newWidth });
+  });
   ro.observe(mainEl);
 }
 
@@ -149,7 +202,7 @@ function renderJudgment(j) {
   _set("judgeL1", j.summary_l1 || "");
   _set("judgeL2", j.summary_l2 || "");
   const bars6 = [
-    { label:"추세",    score:j.scores?.["추세"]    ?? 0, max:30 },
+    { label:"추세",     score:j.scores?.["추세"]    ?? 0, max:30 },
     { label:"모멘텀",  score:j.scores?.["모멘텀"]  ?? 0, max:20 },
     { label:"구조",    score:j.scores?.["구조"]    ?? 0, max:20 },
     { label:"압축",    score:j.scores?.["압축"]    ?? 0, max:20 },
@@ -190,7 +243,6 @@ function renderEntryScore(entry) {
   }
   const metricsEl = document.getElementById("entryMetrics");
   if (!metricsEl) return;
-  // 5 컴포넌트 breakdown
   const comp = entry.components || {};
   const compLabels = ["추세문맥","진입구조","확인신호","저항여유","리스크관리"];
   const compMax    = [30,30,24,18,16];
@@ -206,14 +258,12 @@ function renderEntryScore(entry) {
     </div>`;
   });
   html += `</div>`;
-  // 진입 구조 점수
   const ss = entry.setup_scores || {};
   if (Object.keys(ss).length) {
     html += `<div class="setup-scores">` +
       Object.entries(ss).map(([k,v])=>`<span class="ss-item">${k}<b>${v.toFixed(0)}</b></span>`).join("")+
     `</div>`;
   }
-  // 핵심 메트릭
   const m = entry.metrics || {};
   if (Object.keys(m).length) {
     html += `<div class="entry-metrics-grid">` +
@@ -234,13 +284,14 @@ function renderEntryScore(entry) {
 // ── 지표 칩 ─────────────────────────────────────────────
 function renderChips(j, fisBars) {
   const row  = fisBars[fisBars.length - 1];
+  if(!row) return;
   const rsi  = row.RSI14;
   const rvol = row.RVOL;
   const atr  = row.ATR14;
   const close= row.close;
   const ema20= row.EMA20;
   const ema60= row.EMA60;
-  const bb_up= row.BB_UP, bb_dn = row.BB_DN, bb_mid = row.BB_MID;
+  const bb_up= row.BB_UP, bb_dn = row.BB_DN;
   const rh   = row.RangeHigh, rl = row.RangeLow;
   const chips = [];
   if (rsi != null && !isNaN(rsi)) chips.push({ label:"RSI(14)", val: rsi.toFixed(1), cls: rsi>=70?"bear":rsi<=30?"bull":"" });
@@ -248,14 +299,11 @@ function renderChips(j, fisBars) {
   if (atr != null && !isNaN(atr))  chips.push({ label:"ATR(14)", val:fmt(atr,2), cls:"" });
   if (ema20!= null && !isNaN(ema20)) chips.push({ label:"EMA20", val:fmt(ema20,0), cls:close>ema20?"bull":"bear" });
   if (ema60!= null && !isNaN(ema60)) chips.push({ label:"EMA60", val:fmt(ema60,0), cls:close>ema60?"bull":"bear" });
-  // 일목 구름 상태
   chips.push({ label:"일목", val:j.ichimoku_status?.split("—")[0].trim()||"—", cls: j.ichimoku_status?.includes("위")?"bull":j.ichimoku_status?.includes("아래")?"bear":"" });
-  // BB 위치
   if (bb_up!=null&&bb_dn!=null&&!isNaN(bb_up)&&!isNaN(bb_dn)&&(bb_up-bb_dn)>0) {
     const bbPos = Math.round((close-bb_dn)/(bb_up-bb_dn)*100);
     chips.push({ label:"BB위치", val:bbPos+"%", cls: bbPos>=85?"bear":bbPos<=15?"bull":"" });
   }
-  // 52주 위치
   if (rh&&rl&&!isNaN(rh)&&!isNaN(rl)&&rh>rl) {
     const pos52 = Math.round((close-rl)/(rh-rl)*100);
     chips.push({ label:"52주위치", val:pos52+"%", cls: pos52>=85?"bull":pos52<=20?"bear":"" });
