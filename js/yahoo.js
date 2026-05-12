@@ -71,14 +71,19 @@ async function fetchQuote(ticker) {
     const price = meta.regularMarketPrice;
     if (price == null) return null;
 
-    // bars에서 전일종가 계산 (meta.previousClose가 null인 경우 많음)
-    const closes = (result.indicators?.quote?.[0]?.close || []).filter(c => c != null);
-    const prev = closes.length >= 2
-      ? closes[closes.length - 2]
-      : (meta.previousClose ?? meta.chartPreviousClose ?? null);
+    // closes: null 제거한 완성 바 종가 목록 (오늘 미완성 바는 이미 close=null로 필터됨)
+    const closes    = (result.indicators?.quote?.[0]?.close || []).filter(c => c != null);
+    const lastClose = closes[closes.length - 1] ?? null;   // 가장 최근 완성 종가
+    const prevClose = closes[closes.length - 2] ?? null;   // 그 전날 종가
+
+    // price가 lastClose와 0.1% 이상 차이 → 장중/프리마켓 → prev = lastClose(어제)
+    // price ≈ lastClose → 장후/마감 상태 → prev = prevClose(전전일)
+    const prev = (lastClose != null && Math.abs(price - lastClose) > lastClose * 0.001)
+      ? lastClose
+      : prevClose;
 
     const change    = prev != null ? price - prev : null;
-    const changePct = change != null && prev ? (change / prev) * 100 : null;
+    const changePct = (change != null && prev) ? (change / prev) * 100 : null;
 
     return {
       ticker:      ticker.toUpperCase(),

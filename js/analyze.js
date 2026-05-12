@@ -67,22 +67,36 @@ function reloadChart() { if (_currentTicker) loadChart(_currentTicker); }
 
 // ── 종목 헤더 ────────────────────────────────────────────
 function renderStockHeader(ticker, meta, bars, judgment) {
-  const last   = bars[bars.length - 1];
-  const prev   = bars.length > 1 ? bars[bars.length - 2].close : last.open;
-  const chgPct = prev > 0 ? (last.close - prev) / prev * 100 : 0;
-  const chgAbs = last.close - prev;
-  const sign   = chgPct >= 0 ? "+" : "";
+  const n      = bars.length;
+  const last   = bars[n - 1];
   const isKRW  = (meta?.currency || "") !== "USD";
   const dec    = isKRW ? 0 : 2;
-  const _set   = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+
+  // meta.regularMarketPrice = 가장 최신 현재가 (장중/프리마켓 포함)
+  // bars[-1].close = 마지막 완성 봉 종가 (오늘 미완성 봉은 close=null로 이미 필터됨)
+  const price     = (meta?.regularMarketPrice != null) ? meta.regularMarketPrice : last.close;
+  const lastClose = last.close;
+
+  // prev 결정: price와 lastClose가 유의미하게 다르면 장중/프리마켓 → prev = lastClose(어제)
+  //            거의 같으면 장후/마감 상태 → prev = 전전일 종가
+  const prevClose = n >= 2 ? bars[n - 2].close : null;
+  const prev = (lastClose != null && Math.abs(price - lastClose) > lastClose * 0.001)
+    ? lastClose
+    : prevClose;
+
+  const chgAbs = prev != null ? price - prev : 0;
+  const chgPct = (prev != null && prev > 0) ? (chgAbs / prev) * 100 : 0;
+  const sign   = chgPct >= 0 ? "+" : "";
+
+  const _set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   _set("stockName",     meta?.shortName || meta?.longName || ticker);
   _set("stockTicker",   ticker);
   _set("stockExchange", meta?.exchangeName || meta?.fullExchangeName || "");
   _set("stockCurrency", meta?.currency || "");
-  _set("stockPrice",     fmt(last.close, dec));
+  _set("stockPrice",     fmt(price, dec));
   const dayChgEl = document.getElementById("stockDayChg");
   if (dayChgEl) {
-    dayChgEl.textContent = `${sign}${chgAbs.toFixed(dec)} (${sign}${chgPct.toFixed(2)}%)`;
+    dayChgEl.textContent = `${sign}${fmt(Math.abs(chgAbs), dec)} (${sign}${chgPct.toFixed(2)}%)`;
     dayChgEl.className   = "sh-daychg " + (chgPct >= 0 ? "bull" : "bear");
   }
   const fis = judgment.fis ?? 0;
