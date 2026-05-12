@@ -870,3 +870,10 @@
 .kumo-badge { background:#0047AB !important; color:#fff !important; }
 .kumo-card .cc-label.bull { color:#CC0000; }
 .kumo-card .cc-label.bear { color:#0047AB; }
+/* 스캔 진행률 */
+.scan-progress { display:flex; flex-direction:column; gap:4px; margin:8px 0 16px; }
+.sp-bar-wrap { background:var(--newsprint-border); border-radius:4px; height:6px; overflow:hidden; }
+.sp-bar { background:var(--accent); height:6px; border-radius:4px; transition:width 0.2s; }
+.sp-text { font-size:11px; color:var(--text2); }
+.stop-btn { padding:8px 14px; border:1px solid var(--newsprint-ink); background:transparent; border-radius:4px; cursor:pointer; font-size:13px; color:var(--text1); }
+.stop-btn:hover { background:var(--newsprint-border); }

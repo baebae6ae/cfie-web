@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CFIE v4.0</title>
+<title>CFIE v4.0 — 신규 진입 종목 찾기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="css/common.css">
@@ -17,8 +17,8 @@
     <span class="ver">v4.0</span>
   </div>
   <nav class="topbar-nav">
-    <a href="index.html"  class="nav-link" data-page="index.html">대시보드</a>
-    <a href="scan.html"   class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
+    <a href="index.html" class="nav-link" data-page="index.html">대시보드</a>
+    <a href="scan.html"  class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
   </nav>
   <div class="topbar-search">
     <form class="search-form" onsubmit="return false;">
@@ -43,7 +43,7 @@
 
   <div class="scan-hero">
     <h1>신규 진입 종목 찾기</h1>
-    <p>FIS 점수 기반 진입 후보 또는 쿠모 브레이크아웃 패턴 종목을 자동 발굴합니다</p>
+    <p>브라우저에서 Yahoo Finance 실시간 데이터를 불러와 FIS·쿠모 계산 후 후보를 발굴합니다</p>
   </div>
 
   <!-- 스캔 유형 탭 -->
@@ -52,8 +52,8 @@
     <button class="stab"        data-type="kumo" onclick="selectScanType('kumo')">쿠모 브레이크아웃</button>
   </div>
   <div id="kumoDesc" class="kumo-desc" style="display:none">
-    <strong>쿠모 브레이크아웃 (Kumo Breakout)</strong> — 주봉 기준 구름대(Kumo) 아래에서 20주 이상 체류 후,
-    구름이 얇아지며 반전(Kumo Twist)되는 시점에 가격이 구름을 상향 돌파한 종목을 자동 발굴합니다.
+    <strong>쿠모 브레이크아웃 (Kumo Breakout)</strong> — 주봉 기준 구름대(Kumo) 아래에서
+    4주 이상 체류 후 구름을 상향 돌파한 종목을 자동 발굴합니다.
   </div>
 
   <!-- 마켓 탭 -->
@@ -63,18 +63,26 @@
     <button class="mtab"        data-market="us"     onclick="selectMarket('us')">🇺🇸 미국</button>
   </div>
 
-  <button id="scanBtn" class="scan-btn" onclick="doScan()">스캔 시작</button>
+  <div style="display:flex;gap:8px;align-items:center;margin:12px 0">
+    <button id="scanBtn"     class="scan-btn"  onclick="doScan()">스캔 시작</button>
+    <button id="stopScanBtn" class="stop-btn"  onclick="stopScan()" style="display:none">⏹ 중지</button>
+  </div>
+
+  <!-- 진행률 -->
+  <div id="scanProgress" class="scan-progress" style="display:none">
+    <div class="sp-bar-wrap">
+      <div id="scanProgressBar" class="sp-bar" style="width:0%"></div>
+    </div>
+    <span id="scanProgressText" class="sp-text">0 / 0 종목 분석 완료</span>
+  </div>
 
   <!-- 결과 섹션 -->
   <div id="resultsSection" style="display:none">
     <div class="result-header">
-      <span class="result-count" id="resultCount">0개</span>
-      <span class="result-note"  id="resultLabel"></span>
+      <span id="resultCount" class="result-count">0개</span>
+      <span id="resultsHeader" class="result-note"></span>
     </div>
-    <div class="candidates-grid" id="candidatesGrid"></div>
-    <div id="scanMoreWrap" class="more-wrap" style="display:none">
-      <button id="scanMoreBtn" class="more-btn" onclick="loadMoreScan()">자세히 보기</button>
-    </div>
+    <div class="candidates-grid" id="resultsGrid"></div>
   </div>
 
 </main>
@@ -90,9 +98,8 @@
 <script src="js/common.js"></script>
 <script src="js/scan.js"></script>
 <nav class="mobile-nav">
-  <a href="index.html"  class="mn-item"><span class="mn-icon">📊</span>대시보드</a>
-  <a href="scan.html"   class="mn-item"><span class="mn-icon">🔍</span>종목 탐색</a>
-  <a href="mypage.html" class="mn-item"><span class="mn-icon">💼</span>마이페이지</a>
+  <a href="index.html" class="mn-item"><span class="mn-icon">📊</span>대시보드</a>
+  <a href="scan.html"  class="mn-item"><span class="mn-icon">🔍</span>종목 탐색</a>
 </nav>
 </body>
 </html>

@@ -100,23 +100,29 @@ async function loadMarketMap(region) {
   if (_mapCache[region]) { _drawMap(region, body, _mapCache[region]); return; }
   body.innerHTML = '<div class="map-loading">히트맵 로딩 중…</div>';
 
-  // 정적 앱: 52주 신고가 데이터로 간이 히트맵 생성
   const market = region === "KR" ? "kospi" : "us";
   try {
-    const res = await fetch(`data/high52_${market}.json`);
-    if (!res.ok) throw new Error("no data");
-    const stocks = await res.json();
-    const data = stocks.slice(0, 50).map(s => ({
-      name: s.name || s.ticker,
-      ticker: s.ticker,
-      sector: s.sector || "기타",
-      pct: s.dayChg || 0,
-      value: 1,
-    }));
+    // 유니버스에서 종목 목록 로드
+    if (!_high52Data["_uni_" + market]) {
+      const res = await fetch(`data/universe_${market}.json`);
+      if (!res.ok) throw new Error("유니버스 없음");
+      _high52Data["_uni_" + market] = await res.json();
+    }
+    const universe = _high52Data["_uni_" + market];
+    const sample = universe.slice(0, region === "KR" ? 50 : 30);
+    const tickers = sample.map(s => s.ticker);
+    const quotes = await fetchMultiQuote(tickers);
+
+    const data = sample.map(({ ticker, name }) => {
+      const q = quotes[ticker];
+      const pct = q ? q.changePct : 0;
+      return { name: name || ticker, ticker, sector: "기타", pct, value: 1 };
+    }).filter(d => d.pct !== 0);
+
     _mapCache[region] = data;
     _drawMap(region, body, data);
   } catch(e) {
-    body.innerHTML = '<div class="map-loading" style="color:var(--neutral-500);font-size:0.8rem">히트맵: 데이터 없음<br>GitHub Actions 실행 후 이용 가능</div>';
+    body.innerHTML = '<div class="map-loading" style="color:var(--neutral-500);font-size:0.8rem">히트맵 데이터 로딩 실패</div>';
   }
 }
 
@@ -144,58 +150,92 @@ function _update52hMoreButton() {
   }
 }
 
+// 52주 신고가 — 브라우저에서 유니버스 JSON 로드 후 실시간 OHLCV 계산
+let _h52StopFlag = false;
+
 async function load52h(market, btn) {
   document.querySelectorAll(".h52-tab").forEach(b => b.classList.remove("active"));
   if (btn) btn.classList.add("active");
   _h52Market = market;
-  _h52State.offset = 0;
+  _h52StopFlag = true;  // 이전 스캔 중지
+  await new Promise(r => setTimeout(r, 50));
+  _h52StopFlag = false;
+
+  const grid = document.getElementById("high52Grid");
+  grid.innerHTML = '<div class="high52-loading">실시간 조회 중… (Yahoo Finance)</div>';
   _h52State.items = [];
   _h52State.hasMore = false;
-  const grid = document.getElementById("high52Grid");
-  grid.innerHTML = '<div class="high52-loading">조회 중…</div>';
   _update52hMoreButton();
+
   try {
-    if (!_high52Data[market]) {
-      const res = await fetch(`data/high52_${market}.json`);
-      _high52Data[market] = res.ok ? await res.json() : [];
+    // 유니버스 로드 (종목 리스트)
+    if (!_high52Data["_uni_" + market]) {
+      const res = await fetch(`data/universe_${market}.json`);
+      if (!res.ok) throw new Error("유니버스 없음");
+      _high52Data["_uni_" + market] = await res.json();
     }
-    const all = _high52Data[market] || [];
-    const limit = _h52State.limit;
-    _h52State.items = all.slice(0, limit);
-    _h52State.offset = limit;
-    _h52State.hasMore = all.length > limit;
-    if (!_h52State.items.length) {
-      grid.innerHTML = '<div class="high52-empty">해당 시장에서 52주 신고가 종목이 없습니다.</div>';
-    } else {
-      render52hGrid(grid, _h52State.items);
+    const universe = _high52Data["_uni_" + market];
+    const MAX = 15;
+    const BATCH = 3;
+    const results = [];
+    grid.innerHTML = "";
+
+    for (let i = 0; i < universe.length && results.length < MAX && !_h52StopFlag; i += BATCH) {
+      const batch = universe.slice(i, i + BATCH);
+      const settled = await Promise.allSettled(
+        batch.map(({ ticker, name }) => _check52h(ticker, name))
+      );
+      for (const r of settled) {
+        if (r.status === "fulfilled" && r.value) {
+          results.push(r.value);
+          // 실시간으로 카드 추가
+          const tmp = document.createElement("div");
+          tmp.innerHTML = _render52hCard(r.value);
+          grid.appendChild(tmp.firstElementChild);
+        }
+      }
     }
+
+    if (!results.length) {
+      grid.innerHTML = '<div class="high52-empty">해당 시장에서 52주 신고가 종목을 찾지 못했습니다.</div>';
+    }
+    _h52State.hasMore = false;
     _update52hMoreButton();
   } catch(e) {
-    grid.innerHTML = '<div class="high52-empty">오류가 발생했습니다.</div>';
+    grid.innerHTML = `<div class="high52-empty">오류: ${e.message}</div>`;
     _update52hMoreButton();
   }
+}
+
+async function _check52h(ticker, name) {
+  try {
+    const { bars } = await fetchOHLCV(ticker, "1y", "1d");
+    if (!bars || bars.length < 30) return null;
+    const closes = bars.map(b => b.close);
+    const highs  = bars.map(b => b.high);
+    const vols   = bars.map(b => b.volume);
+    const high52 = Math.max(...highs);
+    const last   = bars[bars.length - 1];
+    const prev   = bars[bars.length - 2];
+    const close  = last.close;
+    const gap    = (close - high52) / high52 * 100;
+    if (gap < -5) return null; // 52주 고점 대비 5% 이상 아래면 제외
+    const dayChg = prev ? (close - prev.close) / prev.close * 100 : 0;
+    const avgVol = vols.slice(-21, -1).reduce((a,b)=>a+b,0) / 20;
+    const volRatio = avgVol > 0 ? vols[vols.length-1] / avgVol : 1;
+    return { ticker, name, close, high52, gap, dayChg, volRatio, streak: 0 };
+  } catch { return null; }
 }
 
 async function loadMore52h() {
-  if (_h52State.loading || !_h52State.hasMore) return;
-  _h52State.loading = true;
-  const btn = document.getElementById("high52MoreBtn");
-  if (btn) { btn.disabled = true; btn.textContent = "불러오는 중..."; }
-  try {
-    const all = _high52Data[_h52Market] || [];
-    const end = _h52State.offset + _h52State.limit;
-    _h52State.items = all.slice(0, end);
-    _h52State.offset = end;
-    _h52State.hasMore = all.length > end;
-    render52hGrid(document.getElementById("high52Grid"), _h52State.items);
-  } finally {
-    _h52State.loading = false;
-    _update52hMoreButton();
-  }
+  // 실시간 모드에서는 더보기 미지원 (전체 스캔 후 결과 고정)
 }
 
 function render52hGrid(grid, stocks) {
-  grid.innerHTML = stocks.map(s => {
+  grid.innerHTML = stocks.map(_render52hCard).join("");
+}
+
+function _render52hCard(s) {
     const dayCls  = (s.dayChg || 0) >= 0 ? "bull" : "bear";
     const daySign = (s.dayChg || 0) >= 0 ? "+" : "";
     const gap     = s.gap ?? 0;
@@ -230,7 +270,6 @@ function render52hGrid(grid, stocks) {
           </div>
         </div>
       </div>`;
-  }).join("");
 }
 
 // ── 포트폴리오 (localStorage) ───────────────────────────
