@@ -1,6 +1,5 @@
-﻿/* js/scan.js  —  CFIE v4.0
+﻿/* js/scan.js  —  CFIE v4.0 (Logic Synchronized with Python Engine)
  * 브라우저에서 직접 Yahoo Finance → indicators.js 계산 → 실시간 표시
- * 유니버스(종목 리스트)만 정적 번들, 모든 계산은 클라이언트 실시간
  */
 
 // ── 상태 ────────────────────────────────────────────────
@@ -11,10 +10,8 @@ let _stopScan    = false;
 let _universe    = {};
 let _results     = [];
 
-// FIS 필터 기준 (원본 Python scan_market 동일)
+// FIS 필터 기준 (Python scan_market과 동일하게 수정)
 const FIS_FILTER = { fis: 30, entry: 55, risk: -16, trend: 0 };
-// 쿠모 필터
-const KUMO_MIN_BELOW_WEEKS = 4;
 const MAX_RESULTS = 30;
 const BATCH_SIZE  = 4;
 
@@ -106,11 +103,14 @@ async function doScan() {
         `${scanned.toLocaleString()} / ${total.toLocaleString()} 종목 분석 완료`;
     }
 
-    // 진입점수 기준 정렬 후 재렌더
-    if (_results.length > 0 && !_stopScan && _scanType === "fis") {
-      _results.sort((a, b) => (b.entry_score || 0) - (a.entry_score || 0));
-      if (grid) {
-        grid.innerHTML = _results.map((c, i) => renderFisCard(c, i)).join("");
+    // 정렬 (FIS: 진입점수순, KUMO: 구름아래 체류주수순)
+    if (_results.length > 0 && !_stopScan) {
+      if (_scanType === "fis") {
+        _results.sort((a, b) => (b.entry_score || 0) - (a.entry_score || 0));
+        if (grid) grid.innerHTML = _results.map((c, i) => renderFisCard(c, i)).join("");
+      } else {
+        _results.sort((a, b) => (b.below_weeks || 0) - (a.below_weeks || 0));
+        if (grid) grid.innerHTML = _results.map(c => renderKumoCard(c)).join("");
       }
     }
     if (countEl) countEl.textContent = `${_results.length}개`;
@@ -142,7 +142,8 @@ function stopScan() {
 // ── 단일 종목 분석 ────────────────────────────────────────
 async function _analyzeOne(ticker, name) {
   try {
-    const period = _market === "us" ? "2y" : "1y";
+    // Python은 FIS는 1y, KUMO는 2y를 사용함
+    const period = _scanType === "kumo" ? "2y" : "1y";
     const { bars } = await fetchOHLCV(ticker, period, "1d");
     if (!bars || bars.length < 60) return null;
     if (_scanType === "fis") return _analyzeFis(ticker, name, bars);
@@ -150,7 +151,7 @@ async function _analyzeOne(ticker, name) {
   } catch(e) { return null; }
 }
 
-// ── FIS 분석 (원본 scan_market 필터 동일) ─────────────────
+// ── FIS 분석 (Python _analyze_one 로직 동일화) ───────────────
 function _analyzeFis(ticker, name, bars) {
   const df = calcIndicators(bars);
   if (!df || df.length < 30) return null;
@@ -160,29 +161,22 @@ function _analyzeFis(ticker, name, bars) {
   if (!judgment) return null;
 
   const { fis, scores } = judgment;
-  const trend    = scores?.["추세"]    ?? 0;
-  const momentum = scores?.["모멘텀"]  ?? 0;
-  const structure= scores?.["구조"]    ?? 0;
-  const compression = scores?.["압축"] ?? 0;
-  const volume   = scores?.["거래량"]  ?? 0;
-  const risk     = scores?.["위험감점"]?? 0;
+  const trend     = scores?.["추세"]     ?? 0;
+  const momentum  = scores?.["모멘텀"]   ?? 0;
+  const risk      = scores?.["위험감점"] ?? 0;
 
   const entryData = calcEntryScore(fisBars);
-  const entry = entryData ? entryData.score : 0;
+  const entryScore = entryData ? entryData.score : 0;
 
-  if (fis   < FIS_FILTER.fis)    return null;
-  if (entry < FIS_FILTER.entry)  return null;
-  if (risk  <= FIS_FILTER.risk)  return null;
+  // Python 필터: FIS ≥ 30 AND entry_score ≥ 55 AND risk > -16 AND trend > 0
+  if (fis < FIS_FILTER.fis) return null;
+  if (entryScore < FIS_FILTER.entry) return null;
+  if (risk <= FIS_FILTER.risk) return null; // Python: risk > -16
   if (trend <= FIS_FILTER.trend) return null;
 
   const last = fisBars[fisBars.length - 1];
-
-  // 진입 구성요소 (entryDetailHTML에서 사용)
-  const entry_components   = entryData?.components    || {};
-  const entry_setup_scores = entryData?.setup_scores  || {};
-  const entry_metrics      = entryData?.metrics       || {};
-  const entry_setup_name   = entryData?.setup_name    || "";
-  const entry_setup_name2  = entryData?.setup_name2   || "";
+  const ema20 = last.EMA20 || last.close;
+  const ema20_gap = Math.round((last.close - ema20) / ema20 * 100 * 10) / 10;
 
   return {
     ticker,
@@ -193,70 +187,155 @@ function _analyzeFis(ticker, name, bars) {
     close:        last.close,
     trend:        Math.round(trend * 100) / 100,
     momentum:     Math.round(momentum * 100) / 100,
-    structure:    Math.round(structure * 100) / 100,
-    compression:  Math.round(compression * 100) / 100,
-    volume:       Math.round(volume * 100) / 100,
+    structure:    Math.round((scores?.["구조"] ?? 0) * 100) / 100,
+    compression:  Math.round((scores?.["압축"] ?? 0) * 100) / 100,
+    volume:       Math.round((scores?.["거래량"] ?? 0) * 100) / 100,
     risk:         Math.round(risk * 100) / 100,
-    entry_score:  Math.round(entry),
-    entry_setup_name,
-    entry_setup_name2,
-    entry_components,
-    entry_setup_scores,
-    entry_metrics,
+    entry_score:  Math.round(entryScore),
+    entry_setup_name: entryData?.setup_name || "",
+    entry_setup_name2: entryData?.setup_name2 || "",
+    entry_components: entryData?.components || {},
+    entry_setup_scores: entryData?.setup_scores || {},
+    entry_metrics: entryData?.metrics || {},
+    ema20_gap:    ema20_gap,
     summary_l1:   judgment.summary_l1 || "",
     ichimoku:     judgment.ichimoku_status || "—",
     atr:          last.ATR14 || 0,
-    high20:       fisBars.slice(-20).reduce((m,b)=>Math.max(m,b.high),-Infinity),
+    high20:       fisBars.slice(-20).reduce((m, b) => Math.max(m, b.high), -Infinity),
   };
 }
 
-// ── 쿠모 브레이크아웃 분석 ──────────────────────────────────
-function _analyzeKumo(ticker, name, bars) {
-  if (bars.length < 52) return null;
-  const weekly = _toWeekly(bars);
-  if (!weekly || weekly.length < 30) return null;
+// ── 쿠모 브레이크아웃 분석 (Python _kumo_check_one 로직 완전 이식) ──
+function _analyzeKumo(ticker, name, dailyBars) {
+  if (dailyBars.length < 60) return null;
+
+  // 1. 주봉 변환
+  const weekly = _toWeekly(dailyBars);
+  if (weekly.length < 52) return null;
+
+  // 2. 일목균형표 계산 (Python _calc_ichimoku_raw 방식)
   const ich = _calcIchimoku(weekly);
-  if (!ich) return null;
-  const last = ich[ich.length - 1];
-  const { close, spanA, spanB } = last;
-  const cloudTop    = Math.max(spanA, spanB);
-  if (close <= cloudTop) return null;
-  let belowWeeks = 0;
-  for (let i = ich.length - 2; i >= 0; i--) {
-    const b = ich[i];
-    if (b.close < Math.max(b.spanA, b.spanB)) belowWeeks++;
-    else break;
+  if (!ich || ich.length < 40) return null;
+
+  const n = ich.length;
+  const last = ich[n - 1];
+
+  // 조건 1: 현재 구름 위 (above_c == 1)
+  const isAbove = (c, a, b) => c > Math.max(a, b);
+  if (!isAbove(last.close, last.spanA, last.spanB)) return null;
+
+  // 조건 2: 최근 36주 내에 구름 돌파 시점 찾기 (brk_idx)
+  let brk_idx = null;
+  for (let i = Math.max(1, n - 36); i < n; i++) {
+    const curr = ich[i];
+    const prev = ich[i - 1];
+    const currAbove = isAbove(curr.close, curr.spanA, curr.spanB);
+    const prevAbove = isAbove(prev.close, prev.spanA, prev.spanB);
+    if (currAbove && !prevAbove) {
+      brk_idx = i;
+      // 가장 최근 돌파점을 찾기 위해 계속 진행하거나, Python처럼 루프 돌림
+    }
   }
-  if (belowWeeks < KUMO_MIN_BELOW_WEEKS) return null;
-  const cloudThin = Math.abs(spanA - spanB) / close < 0.03;
-  const bullCloud = spanA > spanB;
-  const vols = bars.map(b => b.volume).filter(v => v > 0);
-  const avgVol = vols.slice(-21, -1).reduce((a,b)=>a+b,0) / 20;
-  const dailyVol = vols[vols.length-1] > avgVol * 1.3;
-  return { ticker, name, close, below_weeks: belowWeeks, cloud_thin: cloudThin, bull_cloud: bullCloud, daily_vol: dailyVol };
+  if (brk_idx === null) return null;
+
+  // 조건 3: 돌파 전 50주 중 누적 구름 아래 10주 이상 (below_cnt)
+  let below_cnt = 0;
+  const startIdx = Math.max(0, brk_idx - 50);
+  for (let i = startIdx; i < brk_idx; i++) {
+    const b = ich[i];
+    if (b.close < Math.min(b.spanA, b.spanB)) below_cnt++;
+  }
+  if (below_cnt < 10) return null;
+
+  // 조건 4: 구름 반전(Kumo Twist) - 돌파 ±8주 내 존재 여부 또는 현재 양운
+  let had_twist = false;
+  const twistStart = Math.max(0, brk_idx - 8);
+  const twistEnd = Math.min(n - 1, brk_idx + 8);
+  for (let i = twistStart; i <= twistEnd; i++) {
+    if (ich[i].spanA >= ich[i].spanB && (i === 0 || ich[i - 1].spanA < ich[i - 1].spanB)) {
+      had_twist = true;
+      break;
+    }
+  }
+  if (!(had_twist || last.spanA >= last.spanB)) return null;
+
+  // 조건 5: 돌파 전후 구름 두께 (thin_slice min)
+  let min_thick = 99.0;
+  const thinStart = Math.max(0, brk_idx - 6);
+  const thinEnd = Math.min(n - 1, brk_idx + 2);
+  for (let i = thinStart; i <= thinEnd; i++) {
+    const thickness = (Math.abs(ich[i].spanA - ich[i].spanB) / ich[i].close) * 100;
+    if (thickness < min_thick) min_thick = thickness;
+  }
+
+  // 조건 6: 일봉 거래량 폭발 + 장대양봉 (최근 25일 이내)
+  let big_candle = false;
+  const recentDays = dailyBars.slice(-25);
+  // 일봉 20일 평균 거래량 계산을 위해 넉넉한 데이터 필요
+  for (let i = 0; i < recentDays.length; i++) {
+    const dayIdxInFull = dailyBars.length - recentDays.length + i;
+    if (dayIdxInFull < 20) continue;
+    
+    const slice20 = dailyBars.slice(dayIdxInFull - 20, dayIdxInFull);
+    const vol20 = slice20.reduce((a, b) => a + b.volume, 0) / 20;
+    const curr = dailyBars[dayIdxInFull];
+    
+    if (vol20 > 0 && curr.volume >= vol20 * 1.8) {
+      const body = curr.close - curr.open;
+      const range = curr.high - curr.low;
+      if (body > 0 && (range === 0 || body / range > 0.25)) {
+        big_candle = true;
+        break;
+      }
+    }
+  }
+
+  return {
+    ticker, name, 
+    close: last.close, 
+    below_weeks: below_cnt, 
+    cloud_thin: Math.round(min_thick * 10) / 10, 
+    bull_cloud: last.spanA >= last.spanB, 
+    daily_vol: big_candle,
+    had_twist: had_twist
+  };
 }
 
-// ── 일목균형표 계산 ──────────────────────────────────────────
+// ── 일목균형표 계산 (Python 방식: No Shift) ───────────────────
 function _calcIchimoku(weekly) {
   const n = weekly.length;
   if (n < 52) return null;
-  return weekly.map((b, i) => ({
-    time: b.time, close: b.close,
-    spanA: ((_maxHigh(weekly,i,9)+_minLow(weekly,i,9))/2 + (_maxHigh(weekly,i,26)+_minLow(weekly,i,26))/2) / 2,
-    spanB: (_maxHigh(weekly,i,52)+_minLow(weekly,i,52)) / 2,
-  }));
+  
+  return weekly.map((b, i) => {
+    const hi9  = _maxHigh(weekly, i, 9);
+    const lo9  = _minLow(weekly, i, 9);
+    const hi26 = _maxHigh(weekly, i, 26);
+    const lo26 = _minLow(weekly, i, 26);
+    const hi52 = _maxHigh(weekly, i, 52);
+    const lo52 = _minLow(weekly, i, 52);
+
+    const tenkan = (hi9 + lo9) / 2;
+    const kijun  = (hi26 + lo26) / 2;
+
+    return {
+      time: b.time, 
+      close: b.close,
+      spanA: (tenkan + kijun) / 2,
+      spanB: (hi52 + lo52) / 2
+    };
+  });
 }
 
 function _maxHigh(bars, i, period) {
-  const start = Math.max(0, i - period + 1);
+  if (i < period - 1) return bars[i].high;
   let m = -Infinity;
-  for (let j = start; j <= i; j++) m = Math.max(m, bars[j].high);
+  for (let j = i - period + 1; j <= i; j++) m = Math.max(m, bars[j].high);
   return m;
 }
 function _minLow(bars, i, period) {
-  const start = Math.max(0, i - period + 1);
+  if (i < period - 1) return bars[i].low;
   let m = Infinity;
-  for (let j = start; j <= i; j++) m = Math.min(m, bars[j].low);
+  for (let j = i - period + 1; j <= i; j++) m = Math.min(m, bars[j].low);
   return m;
 }
 
@@ -271,8 +350,9 @@ function _toWeekly(bars) {
     const monday = new Date(d);
     monday.setDate(d.getDate() + diff);
     const key = monday.toISOString().slice(0, 10);
-    if (!weeks[key]) weeks[key] = { time: Math.floor(monday.getTime()/1000), open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume };
-    else {
+    if (!weeks[key]) {
+      weeks[key] = { time: Math.floor(monday.getTime()/1000), open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume };
+    } else {
       weeks[key].high   = Math.max(weeks[key].high, b.high);
       weeks[key].low    = Math.min(weeks[key].low,  b.low);
       weeks[key].close  = b.close;
@@ -282,7 +362,7 @@ function _toWeekly(bars) {
   return Object.values(weeks).sort((a,b) => a.time - b.time);
 }
 
-// ── FIS 카드 (원본 renderResults + entryDetailHTML 동일 구조) ─
+// ── FIS 카드 렌더링 ──────────────────────────────────────────
 function renderFisCard(c, idx) {
   const col   = fisColor(c.fis);
   const eScore = c.entry_score ?? 0;
@@ -321,7 +401,7 @@ function renderFisCard(c, idx) {
   </div>`;
 }
 
-// ── 상세 설명 HTML (원본 entryDetailHTML 동일) ────────────────
+// ── 상세 설명 HTML ───────────────────────────────────────────
 function entryDetailHTML(c) {
   const comp   = c.entry_components    || {};
   const setups = c.entry_setup_scores  || {};
@@ -363,13 +443,13 @@ function entryDetailHTML(c) {
     space >= 12 ? "52주 위치·BB 모두 상승 여유 충분. 상단 저항 부담 낮음."
   : space >= 6  ? "적정한 상승 공간 확인됨."
   : space >= 0  ? "일부 저항 부담 있음. 상단 확인 필요."
-  :               "상단 저항 과부담. 추격 매수 불리.";
+  :                "상단 저항 과부담. 추격 매수 불리.";
 
   const riskDesc =
     riskCtrl >= 12 ? "과열 없고 손절가 거리 적정. 위험 관리 조건 양호."
   : riskCtrl >= 8  ? "리스크 통제 가능 수준."
   : riskCtrl >= 4  ? "일부 위험 요소 있음. 손절선 명확히 설정 권장."
-  :                  "ATR 대비 이격 크거나 위험 감점 높음. 주의 필요.";
+  :                   "ATR 대비 이격 크거나 위험 감점 높음. 주의 필요.";
 
   const setupChips = Object.entries(setups).map(([k, v]) =>
     `<span class="det-setup-chip${k === sName ? " best" : ""}">${k} ${v.toFixed(0)}점${k === sName ? " ★" : ""}</span>`
@@ -393,12 +473,11 @@ function entryDetailHTML(c) {
       ${r.extra ? `<div class="det-setup-chips">${r.extra}</div>` : ""}
     </div>`).join("");
 
-  const gapPct = met.ema20_gap_pct != null
-    ? (met.ema20_gap_pct >= 0 ? "+" : "") + met.ema20_gap_pct.toFixed(1) + "%" : "—";
+  const gapStr = c.ema20_gap != null ? (c.ema20_gap >= 0 ? "+" : "") + c.ema20_gap.toFixed(1) + "%" : "—";
 
   return compsHTML + `
     <div class="det-metrics">
-      <span>EMA20 이격 ${gapPct}</span>
+      <span>EMA20 이격 ${gapStr}</span>
       <span>RSI ${met.rsi_reset != null ? met.rsi_reset.toFixed(1) : "—"}</span>
       <span>52주 ${met.range_pos != null ? met.range_pos.toFixed(0) + "%" : "—"}</span>
       <span>BB ${met.bb_pos != null ? met.bb_pos.toFixed(0) + "%" : "—"}</span>
@@ -416,7 +495,7 @@ function toggleDetail(idx) {
   btn.textContent = open ? "▶ 상세 설명" : "▼ 상세 설명 닫기";
 }
 
-// ── 쿠모 카드 ──────────────────────────────────────────────
+// ── 쿠모 카드 렌더링 ──────────────────────────────────────────
 function renderKumoCard(c) {
   const pf = _market === "us" ? "" : "₩";
   const dir = c.bull_cloud ? "bull" : "bear";
@@ -431,10 +510,11 @@ function renderKumoCard(c) {
       <div class="cc-price">${pf}${fmt(c.close)}</div>
       <div class="kumo-badge ${dir}">☁ ${dirTxt}</div>
     </div>
-    <div class="cc-label ${dir}">구름 아래 ${c.below_weeks}주 → 상향 돌파</div>
+    <div class="cc-label ${dir}">구름 아래 ${c.below_weeks}주 체류 후 돌파</div>
     <div class="cc-scores">
-      ${c.cloud_thin ? '<span class="cs-chip pos">얇은 구름</span>' : '<span class="cs-chip neg">두꺼운 구름</span>'}
-      ${c.daily_vol  ? '<span class="cs-chip pos">거래량 급증</span>' : ""}
+      <span class="cs-chip" title="구름 두께">두께 ${c.cloud_thin}%</span>
+      ${c.daily_vol  ? '<span class="cs-chip pos">거래량/장대양봉</span>' : ""}
+      ${c.had_twist  ? '<span class="cs-chip pos">Kumo Twist</span>' : ""}
     </div>
     <div class="cc-actions">
       <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">차트 분석</button>
