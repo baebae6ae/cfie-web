@@ -77,13 +77,13 @@ function renderTickerStrip(indices, quotes) {
   if (!track) return;
   const html = indices.map(idx => {
     const q = quotes[idx.ticker] || {};
-    const pct = q.changePct || 0;
-    const cls = pct > 0 ? "bull" : pct < 0 ? "bear" : "flat";
-    const sign = pct > 0 ? "+" : "";
+    const pct = q.changePct ?? null;
+    const cls = pct == null ? "flat" : pct > 0 ? "bull" : pct < 0 ? "bear" : "flat";
+    const sign = pct != null && pct > 0 ? "+" : "";
     return `<div class="ticker-item">
       <span class="ti-name">${idx.name}</span>
       <span class="ti-price">${q.price != null ? fmt(q.price, 2) : "—"}</span>
-      <span class="ti-chg ${cls}">${q.changePct != null ? sign + pct.toFixed(2) + "%" : "—"}</span>
+      <span class="ti-chg ${cls}">${pct != null ? sign + pct.toFixed(2) + "%" : "—"}</span>
     </div>`;
   }).join("");
   track.innerHTML = html + html;
@@ -97,12 +97,12 @@ function renderQuotes(containerId, indices, quotes, updatedId) {
   if (updEl) updEl.textContent = now + " 기준";
   el.innerHTML = indices.map(idx => {
     const q   = quotes[idx.ticker] || {};
-    const pct = q.changePct || 0;
-    const cls = pct > 0 ? "bull" : pct < 0 ? "bear" : "flat";
-    const sign = pct > 0 ? "+" : "";
-    const abssign = (q.change || 0) > 0 ? "+" : "";
-    const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "—";
-    const barW  = Math.min(Math.abs(pct) / 4 * 100, 100);
+    const pct = q.changePct ?? null;
+    const cls = pct == null ? "flat" : pct > 0 ? "bull" : pct < 0 ? "bear" : "flat";
+    const sign = pct != null && pct > 0 ? "+" : "";
+    const abssign = (q.change ?? 0) > 0 ? "+" : "";
+    const arrow = pct == null ? "—" : pct > 0 ? "▲" : pct < 0 ? "▼" : "—";
+    const barW  = pct != null ? Math.min(Math.abs(pct) / 4 * 100, 100) : 0;
     return `
       <div class="mq-row" onclick="goAnalyze('${idx.ticker}')">
         <div class="mq-left">
@@ -140,13 +140,13 @@ async function loadMarketMap(region) {
       const changePcts = [];
       for (const [ticker, name] of stockList) {
         const q = quotes[ticker] || {};
-        const changePct = q.changePct != null ? q.changePct : 0;
+        const changePct = q.changePct ?? null;  // null 유지, 0으로 채우지 않음
         const short = _shortName(name);
-        stocks.push({ ticker, name, short, change_pct: Math.round(changePct * 100) / 100, sector: sectorName });
-        changePcts.push(changePct);
+        stocks.push({ ticker, name, short, change_pct: changePct != null ? Math.round(changePct * 100) / 100 : null, sector: sectorName });
+        if (changePct != null) changePcts.push(changePct);  // null 제외하고 평균
       }
-      const avg = changePcts.length ? changePcts.reduce((a,b)=>a+b,0)/changePcts.length : 0;
-      sectorAggMap[sectorName] = { name: sectorName, change_pct: Math.round(avg * 100) / 100, count: stockList.length };
+      const avg = changePcts.length ? changePcts.reduce((a,b)=>a+b,0)/changePcts.length : null;
+      sectorAggMap[sectorName] = { name: sectorName, change_pct: avg != null ? Math.round(avg * 100) / 100 : null, count: stockList.length };
     }
     const sectorList = sectors.map(([name]) => sectorAggMap[name]);
     const data = { stocks, sectors: sectorList };

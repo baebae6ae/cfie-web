@@ -97,6 +97,7 @@ function renderTreemap(container, data, mode) {
 }
 
 function _pctColor(pct) {
+  if (pct == null)  return { bg: "#1E293B", text: "#64748B", border: "#334155" }; // 데이터 없음
   if (pct >=  4)  return { bg: "#14532D", text: "#4ADE80", border: "#166534" };
   if (pct >=  2)  return { bg: "#15803D", text: "#86EFAC", border: "#16A34A" };
   if (pct >=  0.5)return { bg: "#166534", text: "#BBF7D0", border: "#15803D" };
@@ -122,7 +123,8 @@ function _renderSectorMap(container, data, cw, ch) {
   for (const { item, x, y, w, h } of rects) {
     const c   = _pctColor(item.change_pct);
     const pad = 3;
-    const sign = item.change_pct >= 0 ? "+" : "";
+    const sign = item.change_pct != null && item.change_pct >= 0 ? "+" : "";
+    const pctText = item.change_pct != null ? `${sign}${item.change_pct.toFixed(2)}%` : "—";
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.style.cursor = "pointer";
@@ -162,7 +164,7 @@ function _renderSectorMap(container, data, cw, ch) {
       pctEl.setAttribute("font-weight", "600");
       pctEl.setAttribute("font-family", "'Noto Sans KR', sans-serif");
       pctEl.setAttribute("opacity", "0.9");
-      pctEl.textContent = `${sign}${item.change_pct.toFixed(2)}%`;
+      pctEl.textContent = pctText;
       g.appendChild(pctEl);
     }
     svg.appendChild(g);
@@ -231,7 +233,8 @@ function _renderStockMap(container, data, cw, ch) {
     for (const { item: stock, x: sx, y: sy, w: sw, h: sh } of innerRects) {
       const c    = _pctColor(stock.change_pct);
       const sp   = 2;
-      const sign = stock.change_pct >= 0 ? "+" : "";
+      const sign = stock.change_pct != null && stock.change_pct >= 0 ? "+" : "";
+      const pctText = stock.change_pct != null ? `${sign}${stock.change_pct.toFixed(1)}%` : "—";
 
       const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
       g.style.cursor = "pointer";
@@ -275,7 +278,7 @@ function _renderStockMap(container, data, cw, ch) {
           pctEl.setAttribute("font-weight", "600");
           pctEl.setAttribute("font-family", "'Noto Sans KR', sans-serif");
           pctEl.setAttribute("opacity", "0.9");
-          pctEl.textContent = `${sign}${stock.change_pct.toFixed(1)}%`;
+          pctEl.textContent = pctText;
           g.appendChild(pctEl);
         }
       }
