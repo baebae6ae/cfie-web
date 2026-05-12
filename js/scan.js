@@ -1,7 +1,4 @@
-﻿/* js/scan.js  —  CFIE v4.0
- * 브라우저에서 직접 Yahoo Finance → indicators.js 계산 → 실시간 표시
- * 유니버스(종목 리스트)만 정적 번들, 모든 계산은 클라이언트 실시간
- */
+﻿/* js/scan.js  —  CFIE v4.0 (수정본) */
 
 // ── 상태 ────────────────────────────────────────────────
 let _scanType    = "fis";
@@ -11,42 +8,36 @@ let _stopScan    = false;
 let _universe    = {};
 let _results     = [];
 
-// FIS 필터 기준 (Python scan_market 동일)
-// r["fis"] >= 30 and r["entry_score"] >= 55 and r["risk"] > -16 and r["trend"] > 0
+// 필터 기준 및 설정
 const FIS_FILTER = { fis: 30, entry: 55, risk: -16, trend: 0 };
+const KUMO_BELOW_MIN    = 10;
+const KUMO_BRK_LOOKBACK = 36;
+const KUMO_TWIST_RANGE  = 8;
+const KUMO_VOL_MULT     = 1.8;
+const KUMO_BODY_RATIO   = 0.25;
 
-// 쿠모 브레이크아웃 조건 (Python scan_kumo_breakout 동일)
-// - 최근 36주 내 below→above 전환 시점 존재
-// - 돌파 전 50주 중 구름 아래 10주 이상
-// - 돌파 ±8주 내 Kumo Twist (cloud_a >= cloud_b 전환) 또는 현재 bull 구름
-// - 일봉 거래량 폭발 + 장대양봉 (최근 25일)
-const KUMO_BELOW_MIN    = 10;   // 돌파 전 50주 중 구름 아래 최소 주 수
-const KUMO_BRK_LOOKBACK = 36;   // 돌파 시점 탐색 범위 (주)
-const KUMO_TWIST_RANGE  = 8;    // Kumo Twist 탐색 ±범위 (주)
-const KUMO_VOL_MULT     = 1.8;  // 거래량 폭발 배수
-const KUMO_BODY_RATIO   = 0.25; // 장대양봉 몸통 비율
+// MAX_RESULTS 제한을 사실상 제거 (혹은 충분히 크게 설정)
+const BATCH_SIZE  = 4; 
 
-const MAX_RESULTS = 30;
-const BATCH_SIZE  = 4;
-
-// ── UI 탭 ────────────────────────────────────────────────
+// ── UI 제어 ──────────────────────────────────────────────
 function selectScanType(type) {
   _scanType = type;
   document.querySelectorAll(".stab").forEach(t =>
     t.classList.toggle("active", t.dataset.type === type));
   const kd = document.getElementById("kumoDesc");
   if (kd) kd.style.display = type === "kumo" ? "block" : "none";
-  document.getElementById("resultsSection").style.display = "none";
+  // 스캔 중이 아닐 때만 결과 섹션을 가림
+  if (!_scanning) document.getElementById("resultsSection").style.display = "none";
 }
 
 function selectMarket(market) {
   _market = market;
   document.querySelectorAll(".mtab").forEach(t =>
     t.classList.toggle("active", t.dataset.market === market));
-  document.getElementById("resultsSection").style.display = "none";
+  if (!_scanning) document.getElementById("resultsSection").style.display = "none";
 }
 
-// ── 스캔 시작 ────────────────────────────────────────────
+// ── 스캔 로직 (전체 종목 순회 및 비차단 상호작용) ──────────────
 async function doScan() {
   if (_scanning) return;
   _scanning = true;
@@ -58,16 +49,17 @@ async function doScan() {
   const progressEl = document.getElementById("scanProgress");
   const progressBar = document.getElementById("scanProgressBar");
   const progressText = document.getElementById("scanProgressText");
+  const grid = document.getElementById("candidatesGrid");
+  const countEl = document.getElementById("resultCount");
+  const rs = document.getElementById("resultsSection");
 
+  // UI 초기 설정: 로딩 오버레이는 표시하지 않음 (사용자 상호작용 허용)
   scanBtn.style.display = "none";
   if (stopBtn) stopBtn.style.display = "inline-flex";
-  document.getElementById("resultsSection").style.display = "none";
-  document.getElementById("loadingOverlay").style.display = "flex";
-
-  const label = { kospi: "코스피", kosdaq: "코스닥", us: "미국" }[_market];
-  const typeLabel = _scanType === "kumo" ? "쿠모 브레이크아웃" : "FIS 진입";
-  const lm = document.getElementById("loadingMsg");
-  if (lm) lm.textContent = `${label} ${typeLabel} 실시간 분석 중…`;
+  
+  if (grid) grid.innerHTML = "";
+  if (rs) rs.style.display = "block";
+  if (progressEl) progressEl.style.display = "flex";
 
   try {
     if (!_universe[_market]) {
@@ -78,17 +70,10 @@ async function doScan() {
     const universe = _universe[_market];
     const total = universe.length;
 
-    const grid = document.getElementById("candidatesGrid");
-    if (grid) grid.innerHTML = "";
-    const rs = document.getElementById("resultsSection");
-    rs.style.display = "block";
-    const countEl = document.getElementById("resultCount");
-
-    if (progressEl) progressEl.style.display = "flex";
-
     let scanned = 0;
+
+    // 루프에서 _results.length >= MAX_RESULTS 조건을 삭제하여 전체 스캔
     for (let i = 0; i < total && !_stopScan; i += BATCH_SIZE) {
-      if (_results.length >= MAX_RESULTS) break;
       const batch = universe.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.allSettled(
@@ -99,62 +84,65 @@ async function doScan() {
         if (r.status === "fulfilled" && r.value) {
           const candidate = r.value;
           _results.push(candidate);
-          const idx = _results.length - 1;
+          
+          // 발견 즉시 화면에 렌더링 (실시간성 확보)
           if (grid) {
+            const idx = _results.length - 1;
             const card = _scanType === "kumo"
               ? renderKumoCard(candidate)
               : renderFisCard(candidate, idx);
             grid.insertAdjacentHTML("beforeend", card);
           }
-          if (countEl) countEl.textContent = `${_results.length}개`;
+          if (countEl) countEl.textContent = `${_results.length}개 발견`;
         }
       }
 
       scanned += batch.length;
       const pct = Math.round((scanned / total) * 100);
       if (progressBar) progressBar.style.width = pct + "%";
-      if (progressText) progressText.textContent =
-        `${scanned.toLocaleString()} / ${total.toLocaleString()} 종목 분석 완료`;
+      if (progressText) {
+        progressText.textContent = `${scanned.toLocaleString()} / ${total.toLocaleString()} 종목 분석 중...`;
+      }
+      
+      // UI 스레드 점유 방지를 위한 미세한 지연 (선택 사항)
+      // await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    // 진입점수 기준 정렬 후 재렌더
-    if (_results.length > 0 && !_stopScan && _scanType === "fis") {
-      _results.sort((a, b) => (b.entry_score || 0) - (a.entry_score || 0));
-      if (grid) {
-        grid.innerHTML = _results.map((c, i) => renderFisCard(c, i)).join("");
+    // 모든 스캔 완료 후 정렬 재배치
+    if (_results.length > 0 && !_stopScan) {
+      if (_scanType === "fis") {
+        _results.sort((a, b) => (b.entry_score || 0) - (a.entry_score || 0));
+        if (grid) grid.innerHTML = _results.map((c, i) => renderFisCard(c, i)).join("");
+      } else if (_scanType === "kumo") {
+        _results.sort((a, b) => (b.below_weeks || 0) - (a.below_weeks || 0));
+        if (grid) grid.innerHTML = _results.map(c => renderKumoCard(c)).join("");
       }
     }
-    // 쿠모: below_weeks 내림차순 정렬
-    if (_results.length > 0 && !_stopScan && _scanType === "kumo") {
-      _results.sort((a, b) => (b.below_weeks || 0) - (a.below_weeks || 0));
-      if (grid) {
-        grid.innerHTML = _results.map(c => renderKumoCard(c)).join("");
-      }
-    }
-    if (countEl) countEl.textContent = `${_results.length}개`;
 
+    const label = { kospi: "코스피", kosdaq: "코스닥", us: "미국" }[_market];
     const resultLabel = document.getElementById("resultLabel");
     if (resultLabel) {
       resultLabel.textContent = _scanType === "kumo"
-        ? `${label} 쿠모 브레이크아웃 패턴 종목 (구름 아래 체류기간 긴 순)`
-        : `${label} 상승 우위 진입 후보 (진입 점수 높은 순)`;
+        ? `${label} 전체 분석 완료 (체류기간 순)`
+        : `${label} 전체 분석 완료 (점수 순)`;
     }
 
   } catch(e) {
-    showToast("스캔 오류: " + e.message, "error");
+    showToast("스캔 중 오류 발생: " + e.message, "error");
   } finally {
-    document.getElementById("loadingOverlay").style.display = "none";
+    // 오버레이 제거 코드는 삭제됨
     if (stopBtn) stopBtn.style.display = "none";
     scanBtn.style.display = "inline-flex";
     _scanning = false;
-    const progressEl2 = document.getElementById("scanProgress");
-    if (progressEl2) progressEl2.style.display = "none";
+    if (progressText) progressText.textContent = "분석 완료";
+    // 스캔 완료 후에도 진행 바를 잠시 보여주거나, 원할 경우 숨김 처리
+    // if (progressEl) progressEl.style.display = "none";
   }
 }
 
 function stopScan() {
   _stopScan = true;
-  showToast("스캔을 중지했습니다", "info");
+  showToast("사용자에 의해 스캔이 중단되었습니다.", "info");
 }
 
 // ── 단일 종목 분석 ────────────────────────────────────────
