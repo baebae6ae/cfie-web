@@ -20,6 +20,16 @@
     "rvol": 2.63
   },
   {
+    "ticker": "017670.KS",
+    "name": "SK텔레콤",
+    "close": 103400.0,
+    "high52": 108000.0,
+    "gap": -4.26,
+    "streak": 1,
+    "dayChg": 5.3,
+    "rvol": 2.38
+  },
+  {
     "ticker": "000660.KS",
     "name": "SK하이닉스",
     "close": 1835000.0,
@@ -123,7 +133,7 @@
     "ticker": "105560.KS",
     "name": "KB금융",
     "close": 153600.0,
-    "high52": 169620.12,
+    "high52": 169620.11,
     "gap": -9.44,
     "streak": 0,
     "dayChg": -3.27,
@@ -198,5 +208,45 @@
     "streak": 0,
     "dayChg": -1.05,
     "rvol": 1.05
+  },
+  {
+    "ticker": "018260.KS",
+    "name": "삼성에스디에스",
+    "close": 179300.0,
+    "high52": 196900.0,
+    "gap": -8.94,
+    "streak": 0,
+    "dayChg": 3.22,
+    "rvol": 2.34
+  },
+  {
+    "ticker": "030200.KS",
+    "name": "KT",
+    "close": 59900.0,
+    "high52": 68784.93,
+    "gap": -12.92,
+    "streak": 0,
+    "dayChg": 1.87,
+    "rvol": 1.18
+  },
+  {
+    "ticker": "034730.KS",
+    "name": "SK",
+    "close": 541000.0,
+    "high52": 600000.0,
+    "gap": -9.83,
+    "streak": 0,
+    "dayChg": -5.25,
+    "rvol": 1.49
+  },
+  {
+    "ticker": "096770.KS",
+    "name": "SK이노베이션",
+    "close": 128500.0,
+    "high52": 155400.0,
+    "gap": -17.31,
+    "streak": 0,
+    "dayChg": -3.17,
+    "rvol": 0.99
   }
 ]

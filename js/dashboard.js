@@ -110,7 +110,7 @@ async function loadMarketMap(region) {
       name: s.name || s.ticker,
       ticker: s.ticker,
       sector: s.sector || "기타",
-      pct: s.chg || 0,
+      pct: s.dayChg || 0,
       value: 1,
     }));
     _mapCache[region] = data;
@@ -196,9 +196,9 @@ async function loadMore52h() {
 
 function render52hGrid(grid, stocks) {
   grid.innerHTML = stocks.map(s => {
-    const dayCls  = (s.chg || 0) >= 0 ? "bull" : "bear";
-    const daySign = (s.chg || 0) >= 0 ? "+" : "";
-    const gap     = s.gap_pct ?? (s.high52 && s.close ? ((s.close - s.high52) / s.high52 * 100) : 0);
+    const dayCls  = (s.dayChg || 0) >= 0 ? "bull" : "bear";
+    const daySign = (s.dayChg || 0) >= 0 ? "+" : "";
+    const gap     = s.gap ?? 0;
     const gapCls  = gap >= 0 ? "bull" : "bear";
     const gapSign = gap >= 0 ? "+" : "";
     const streak  = s.streak || 0;
@@ -226,7 +226,7 @@ function render52hGrid(grid, stocks) {
           </div>
           <div class="h52-meta-item">
             <span class="h52-meta-label">당일 등락</span>
-            <span class="h52-meta-val ${dayCls}">${daySign}${(s.chg || 0).toFixed(2)}%</span>
+            <span class="h52-meta-val ${dayCls}">${daySign}${(s.dayChg || 0).toFixed(2)}%</span>
           </div>
         </div>
       </div>`;

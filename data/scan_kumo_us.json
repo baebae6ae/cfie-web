@@ -75,6 +75,21 @@
     "summary_l1": "중립 구간. 방향성 확인 후 접근."
   },
   {
+    "ticker": "BRK-B",
+    "name": "Berkshire Hathaway",
+    "close": 479.55,
+    "dayChg": 0.76,
+    "fis": -7.5,
+    "trend": -15,
+    "momentum": 10,
+    "entry_score": 51,
+    "rsi14": 62.3,
+    "ema20": 474.17,
+    "label": "약세",
+    "entry_label": "중립",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
+  },
+  {
     "ticker": "AAPL",
     "name": "Apple Inc.",
     "close": 292.68,
@@ -103,6 +118,21 @@
     "label": "강세",
     "entry_label": "부적합",
     "summary_l1": "중립 구간. 방향성 확인 후 접근."
+  },
+  {
+    "ticker": "XOM",
+    "name": "Exxon Mobil",
+    "close": 149.68,
+    "dayChg": 3.53,
+    "fis": -16.4,
+    "trend": -8,
+    "momentum": -0.5,
+    "entry_score": 35,
+    "rsi14": 52.2,
+    "ema20": 151.17,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
   },
   {
     "ticker": "TSLA",
@@ -165,6 +195,66 @@
     "summary_l1": "중립 구간. 방향성 확인 후 접근."
   },
   {
+    "ticker": "META",
+    "name": "Meta Platforms",
+    "close": 598.86,
+    "dayChg": -1.77,
+    "fis": -49.9,
+    "trend": -30,
+    "momentum": -10,
+    "entry_score": 10,
+    "rsi14": 26.3,
+    "ema20": 627.92,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
+  },
+  {
+    "ticker": "HD",
+    "name": "Home Depot",
+    "close": 311.4,
+    "dayChg": -1.91,
+    "fis": -54.1,
+    "trend": -30,
+    "momentum": -10,
+    "entry_score": 10,
+    "rsi14": 25.8,
+    "ema20": 326.54,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
+  },
+  {
+    "ticker": "JPM",
+    "name": "JPMorgan Chase",
+    "close": 300.0,
+    "dayChg": -0.7,
+    "fis": -12.4,
+    "trend": 1,
+    "momentum": -10,
+    "entry_score": 9,
+    "rsi14": 34.6,
+    "ema20": 307.21,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
+  },
+  {
+    "ticker": "MA",
+    "name": "Mastercard",
+    "close": 497.81,
+    "dayChg": 0.47,
+    "fis": -40.9,
+    "trend": -27,
+    "momentum": -2,
+    "entry_score": 9,
+    "rsi14": 43.3,
+    "ema20": 502.99,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
+  },
+  {
     "ticker": "COST",
     "name": "Costco Wholesale",
     "close": 999.47,
@@ -178,5 +268,35 @@
     "label": "중립",
     "entry_label": "부적합",
     "summary_l1": "중립 구간. 방향성 확인 후 접근."
+  },
+  {
+    "ticker": "NFLX",
+    "name": "Netflix Inc.",
+    "close": 85.45,
+    "dayChg": -2.33,
+    "fis": -54.1,
+    "trend": -30,
+    "momentum": -10,
+    "entry_score": 0,
+    "rsi14": 24.5,
+    "ema20": 91.84,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
+  },
+  {
+    "ticker": "CRM",
+    "name": "Salesforce Inc.",
+    "close": 177.49,
+    "dayChg": -2.38,
+    "fis": -30.6,
+    "trend": -21,
+    "momentum": 2,
+    "entry_score": 0,
+    "rsi14": 42.3,
+    "ema20": 181.96,
+    "label": "약세",
+    "entry_label": "부적합",
+    "summary_l1": "하락 압력 구간. 신중한 접근 필요."
   }
 ]

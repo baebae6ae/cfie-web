@@ -60,6 +60,16 @@
     "rvol": 0.83
   },
   {
+    "ticker": "AMD",
+    "name": "AMD",
+    "close": 458.79,
+    "high52": 469.22,
+    "gap": -2.22,
+    "streak": 2,
+    "dayChg": 0.79,
+    "rvol": 0.96
+  },
+  {
     "ticker": "MSFT",
     "name": "Microsoft Corp.",
     "close": 412.66,
@@ -148,5 +158,45 @@
     "streak": 0,
     "dayChg": 0.47,
     "rvol": 1.06
+  },
+  {
+    "ticker": "COST",
+    "name": "Costco Wholesale",
+    "close": 999.47,
+    "high52": 1061.11,
+    "gap": -5.81,
+    "streak": 0,
+    "dayChg": -0.92,
+    "rvol": 1.15
+  },
+  {
+    "ticker": "HD",
+    "name": "Home Depot",
+    "close": 311.4,
+    "high52": 421.19,
+    "gap": -26.07,
+    "streak": 0,
+    "dayChg": -1.91,
+    "rvol": 1.07
+  },
+  {
+    "ticker": "NFLX",
+    "name": "Netflix Inc.",
+    "close": 85.45,
+    "high52": 134.12,
+    "gap": -36.29,
+    "streak": 0,
+    "dayChg": -2.33,
+    "rvol": 0.91
+  },
+  {
+    "ticker": "CRM",
+    "name": "Salesforce Inc.",
+    "close": 177.49,
+    "high52": 293.86,
+    "gap": -39.6,
+    "streak": 0,
+    "dayChg": -2.38,
+    "rvol": 0.87
   }
 ]
