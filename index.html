@@ -1,9 +1,187 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>CFIE</title>
-<script>window.location.replace("dashboard.html");</script>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CFIE v4.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="css/common.css">
+<link rel="stylesheet" href="css/dashboard.css">
 </head>
-<body></body>
+<body>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="logo">CFIE</span>
+    <span class="ver">v4.0</span>
+  </div>
+  <nav class="topbar-nav">
+    <a href="index.html"  class="nav-link" data-page="index.html">대시보드</a>
+    <a href="scan.html"   class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
+    <a href="mypage.html" class="nav-link" data-page="mypage.html">마이 페이지</a>
+  </nav>
+  <div class="topbar-search">
+    <form class="search-form" onsubmit="return false;">
+      <input type="text" id="searchInput" class="search-input"
+             placeholder="종목명 또는 티커 검색…" autocomplete="off">
+      <button type="button" class="search-btn" onclick="doSearch()">⌕</button>
+    </form>
+    <div id="searchDropdown" class="search-dropdown hidden"></div>
+  </div>
+  <div class="topbar-right">
+    <span id="clockText" class="clock"></span>
+  </div>
+</header>
+
+<!-- 시장 티커 스트립 -->
+<div class="ticker-strip">
+  <div class="ticker-track" id="tickerTrack">
+    <div class="ticker-item"><span class="ti-name">시장 데이터 로딩 중…</span></div>
+  </div>
+</div>
+
+<main class="main-content">
+
+  <!-- 한국 시장 -->
+  <section class="market-section">
+    <div class="ms-head">
+      <div class="ms-flag-title">
+        <span class="ms-flag">🇰🇷</span>
+        <span class="ms-title">한국 시장</span>
+      </div>
+      <span class="ms-updated" id="krUpdated"></span>
+    </div>
+    <div class="ms-body">
+      <div class="ms-quotes-col">
+        <div class="ms-quotes" id="krQuotes">
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+        </div>
+      </div>
+      <div class="ms-map-col">
+        <div class="ms-map-head">
+          <span class="ms-map-label">시장 히트맵</span>
+          <button class="ms-map-btn" onclick="loadMarketMap('KR')">↺</button>
+        </div>
+        <div class="ms-map-body" id="krMapBody">
+          <div class="map-loading">히트맵 로딩 중…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 미국 시장 -->
+  <section class="market-section">
+    <div class="ms-head">
+      <div class="ms-flag-title">
+        <span class="ms-flag">🇺🇸</span>
+        <span class="ms-title">미국 시장</span>
+      </div>
+      <span class="ms-updated" id="usUpdated"></span>
+    </div>
+    <div class="ms-body">
+      <div class="ms-quotes-col">
+        <div class="ms-quotes" id="usQuotes">
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+          <div class="mq-skeleton"></div>
+        </div>
+      </div>
+      <div class="ms-map-col">
+        <div class="ms-map-head">
+          <span class="ms-map-label">시장 히트맵</span>
+          <button class="ms-map-btn" onclick="loadMarketMap('US')">↺</button>
+        </div>
+        <div class="ms-map-body" id="usMapBody">
+          <div class="map-loading">히트맵 로딩 중…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 52주 신고가 -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-accent"></div>
+      <span class="section-title">🏔 52주 신고가</span>
+      <span class="section-sub">현재 52주 최고가에 근접한 종목과 연속 주수</span>
+    </div>
+    <div class="high52-tabs">
+      <button class="h52-tab active" onclick="load52h('kospi',this)">KOSPI</button>
+      <button class="h52-tab" onclick="load52h('kosdaq',this)">KOSDAQ</button>
+      <button class="h52-tab" onclick="load52h('us',this)">US</button>
+    </div>
+    <div id="high52Grid" class="high52-grid">
+      <div class="high52-loading">데이터 로딩 중…</div>
+    </div>
+    <div id="high52MoreWrap" class="more-wrap" style="display:none">
+      <button id="high52MoreBtn" class="more-btn" onclick="loadMore52h()">자세히 보기</button>
+    </div>
+  </section>
+
+  <!-- 내 포트폴리오 -->
+  <section class="section">
+    <div class="section-header">
+      <div class="section-accent"></div>
+      <span class="section-title">💼 내 포트폴리오</span>
+    </div>
+    <div id="portfolioWrap">
+      <div class="portfolio-wrap">
+        <div class="empty-portfolio">
+          <div class="ep-icon">⏳</div>
+          <div class="ep-title">로딩 중…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  본 서비스는 참고용 정보이며 투자 권유가 아닙니다. 투자 결과에 대한 책임은 투자자 본인에게 있습니다.
+</footer>
+
+<!-- 트레이드 모달 -->
+<div id="dashTradeModal" class="dash-modal-overlay" style="display:none">
+  <div class="dash-modal-box">
+    <div class="dash-modal-header">
+      <div>
+        <div class="dash-modal-title" id="dashTradeTitle">추가 매수</div>
+        <div class="dash-modal-sub" id="dashTradeSub">-</div>
+      </div>
+      <button class="dash-modal-close" onclick="closeDashTradeModal()">✕</button>
+    </div>
+    <div class="dash-modal-row">
+      <label for="dashTradeQty">수량 (주)</label>
+      <input id="dashTradeQty" type="number" min="1" value="1">
+      <span id="dashTradeHelper" class="dash-modal-helper"></span>
+    </div>
+    <div id="dashTradePriceRow" class="dash-modal-row">
+      <label for="dashTradePrice">매수가</label>
+      <input id="dashTradePrice" type="number" min="1" step="1">
+      <span class="dash-modal-helper">원</span>
+    </div>
+    <div class="dash-modal-footer">
+      <button class="dash-btn dash-btn-cancel" onclick="closeDashTradeModal()">취소</button>
+      <button id="dashTradeConfirm" class="dash-btn dash-btn-confirm" onclick="confirmDashTrade()">매수 등록</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="js/treemap.js"></script>
+<script src="js/yahoo.js"></script>
+<script src="js/common.js"></script>
+<script src="js/dashboard.js"></script>
+<nav class="mobile-nav">
+  <a href="index.html"  class="mn-item"><span class="mn-icon">📊</span>대시보드</a>
+  <a href="scan.html"   class="mn-item"><span class="mn-icon">🔍</span>종목 탐색</a>
+  <a href="mypage.html" class="mn-item"><span class="mn-icon">💼</span>마이페이지</a>
+</nav>
+</body>
 </html>

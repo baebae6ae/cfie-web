@@ -1,0 +1,112 @@
+[
+  {
+    "ticker": "AAPL",
+    "name": "Apple Inc.",
+    "close": 292.68,
+    "dayChg": -0.13,
+    "fis": 40,
+    "rsi14": 78.5,
+    "ema20": 276.4,
+    "label": "강세"
+  },
+  {
+    "ticker": "NVDA",
+    "name": "NVIDIA Corp.",
+    "close": 219.44,
+    "dayChg": 1.97,
+    "fis": 40,
+    "rsi14": 64.9,
+    "ema20": 203.29,
+    "label": "강세"
+  },
+  {
+    "ticker": "AMZN",
+    "name": "Amazon.com Inc.",
+    "close": 268.99,
+    "dayChg": -1.35,
+    "fis": 40,
+    "rsi14": 72.1,
+    "ema20": 259.24,
+    "label": "강세"
+  },
+  {
+    "ticker": "GOOGL",
+    "name": "Alphabet Inc.",
+    "close": 388.64,
+    "dayChg": -3.03,
+    "fis": 40,
+    "rsi14": 82.2,
+    "ema20": 364.59,
+    "label": "강세"
+  },
+  {
+    "ticker": "TSLA",
+    "name": "Tesla Inc.",
+    "close": 445.0,
+    "dayChg": 3.89,
+    "fis": 40,
+    "rsi14": 78.1,
+    "ema20": 394.64,
+    "label": "강세"
+  },
+  {
+    "ticker": "V",
+    "name": "Visa Inc.",
+    "close": 323.86,
+    "dayChg": 1.59,
+    "fis": 40,
+    "rsi14": 62.3,
+    "ema20": 318.06,
+    "label": "강세"
+  },
+  {
+    "ticker": "UNH",
+    "name": "UnitedHealth Group",
+    "close": 384.44,
+    "dayChg": 1.17,
+    "fis": 40,
+    "rsi14": 84.0,
+    "ema20": 353.64,
+    "label": "강세"
+  },
+  {
+    "ticker": "AVGO",
+    "name": "Broadcom Inc.",
+    "close": 428.43,
+    "dayChg": -0.37,
+    "fis": 40,
+    "rsi14": 61.0,
+    "ema20": 406.29,
+    "label": "강세"
+  },
+  {
+    "ticker": "LLY",
+    "name": "Eli Lilly",
+    "close": 966.99,
+    "dayChg": 1.95,
+    "fis": 25,
+    "rsi14": 60.8,
+    "ema20": 940.31,
+    "label": "중립"
+  },
+  {
+    "ticker": "MSFT",
+    "name": "Microsoft Corp.",
+    "close": 412.66,
+    "dayChg": -0.59,
+    "fis": 17,
+    "rsi14": 43.5,
+    "ema20": 411.8,
+    "label": "중립"
+  },
+  {
+    "ticker": "BRK-B",
+    "name": "Berkshire Hathaway",
+    "close": 479.55,
+    "dayChg": 0.76,
+    "fis": 15,
+    "rsi14": 62.3,
+    "ema20": 474.17,
+    "label": "중립"
+  }
+]

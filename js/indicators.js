@@ -9,7 +9,7 @@ const fnum  = (v, def = 0) => (v == null || isNaN(v)) ? def : +v;
 const rangePos = (c, lo, hi, def = 0.5) => hi <= lo ? def : clip((c - lo) / (hi - lo), 0, 1);
 
 // ── EMA ──────────────────────────────────────────
-export function ema(closes, span) {
+function ema(closes, span) {
   const k = 2 / (span + 1), out = new Array(closes.length).fill(null);
   let e = closes[0];
   for (let i = 0; i < closes.length; i++) {
@@ -21,7 +21,7 @@ export function ema(closes, span) {
 }
 
 // ── ATR ──────────────────────────────────────────
-export function atr(bars, period = 14) {
+function atr(bars, period = 14) {
   const n = bars.length, out = new Array(n).fill(null);
   const tr = bars.map((b, i) => {
     if (i === 0) return b.high - b.low;
@@ -38,7 +38,7 @@ export function atr(bars, period = 14) {
 }
 
 // ── RSI ──────────────────────────────────────────
-export function rsi(closes, period = 14) {
+function rsi(closes, period = 14) {
   const out = new Array(closes.length).fill(null);
   let avgGain = 0, avgLoss = 0;
   for (let i = 1; i <= period; i++) {
@@ -58,7 +58,7 @@ export function rsi(closes, period = 14) {
 }
 
 // ── MACD ─────────────────────────────────────────
-export function macd(closes, fast=12, slow=26, signal=9) {
+function macd(closes, fast=12, slow=26, signal=9) {
   const e12 = ema(closes, fast), e26 = ema(closes, slow);
   const macdLine = closes.map((_, i) => (e12[i] == null || e26[i] == null) ? null : e12[i] - e26[i]);
   const sigLine  = ema(macdLine.map(v => v ?? 0), signal);
@@ -67,7 +67,7 @@ export function macd(closes, fast=12, slow=26, signal=9) {
 }
 
 // ── Bollinger Bands ───────────────────────────────
-export function bollinger(closes, period=20, mult=2) {
+function bollinger(closes, period=20, mult=2) {
   const mid = [], up = [], dn = [], width = [];
   for (let i = 0; i < closes.length; i++) {
     if (i < period - 1) { mid.push(null); up.push(null); dn.push(null); width.push(null); continue; }
@@ -81,7 +81,7 @@ export function bollinger(closes, period=20, mult=2) {
 }
 
 // ── ADX ──────────────────────────────────────────
-export function adx(bars, period=14) {
+function adx(bars, period=14) {
   const n = bars.length, adxOut = new Array(n).fill(null);
   const plusDI = new Array(n).fill(null), minusDI = new Array(n).fill(null);
   const alpha = 1 / period;
@@ -108,7 +108,7 @@ export function adx(bars, period=14) {
 }
 
 // ── Ichimoku ──────────────────────────────────────
-export function ichimoku(bars, t=9, k=26, s=52) {
+function ichimoku(bars, t=9, k=26, s=52) {
   const n = bars.length;
   const tenkan = new Array(n).fill(null);
   const kijun  = new Array(n).fill(null);
@@ -139,7 +139,7 @@ export function ichimoku(bars, t=9, k=26, s=52) {
 }
 
 // ── RVOL (상대 거래량) ─────────────────────────────
-export function rvol(volumes, period=20) {
+function rvol(volumes, period=20) {
   return volumes.map((v, i) => {
     if (i < period) return null;
     const avg = volumes.slice(i - period, i).reduce((a,b) => a+b, 0) / period;
@@ -148,7 +148,7 @@ export function rvol(volumes, period=20) {
 }
 
 // ── ROC ───────────────────────────────────────────
-export function roc(closes, period=20) {
+function roc(closes, period=20) {
   return closes.map((c, i) => {
     if (i < period || closes[i-period] === 0) return null;
     return (c - closes[i-period]) / closes[i-period] * 100;
@@ -156,7 +156,7 @@ export function roc(closes, period=20) {
 }
 
 // ── 전체 지표 계산 (bars 배열 기준) ──────────────────
-export function calcIndicators(bars) {
+function calcIndicators(bars) {
   const closes  = bars.map(b => b.close);
   const highs   = bars.map(b => b.high);
   const lows    = bars.map(b => b.low);
@@ -324,7 +324,7 @@ function scoreRisk(bars, i) {
 }
 
 // ── 전체 FIS 계산 ──────────────────────────────────
-export function calcFIS(bars) {
+function calcFIS(bars) {
   return bars.map((b, i) => {
     const trend  = scoreTrend(bars, i);
     const mom    = scoreMomentum(bars, i);
@@ -340,7 +340,7 @@ export function calcFIS(bars) {
 }
 
 // ── 진입 점수 (마지막 봉 기준) ────────────────────────
-export function calcEntryScore(bars) {
+function calcEntryScore(bars) {
   const r = bars[bars.length - 1];
   const c = fnum(r.close), e10 = fnum(r.EMA10, c), e20 = fnum(r.EMA20, c), e60 = fnum(r.EMA60, c);
   const atrV = fnum(r.ATR14), adxV = fnum(r.ADX14, 18);
@@ -383,7 +383,7 @@ function scoreLabel(s) {
   return          { text: "부적합",      color: "#C41D3A" };
 }
 
-export function fisLabel(fis) {
+function fisLabel(fis) {
   if (fis >= 50)  return { text: "강한 매수 신호", color: "#0D7F3C" };
   if (fis >= 20)  return { text: "매수 우위",      color: "#2ea44f" };
   if (fis >= -10) return { text: "중립",           color: "#B8860B" };

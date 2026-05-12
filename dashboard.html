@@ -1,79 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="refresh" content="0;url=index.html">
 <title>CFIE — 대시보드</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:wght@400;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="css/common.css">
-<link rel="stylesheet" href="css/dashboard.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="topbar-brand">
-    <a href="dashboard.html" style="text-decoration:none">
-      <span class="logo">CFIE</span><span class="ver">v4.0</span>
-    </a>
-  </div>
-  <nav class="topbar-nav">
-    <a href="dashboard.html" class="nav-link">대시보드</a>
-    <a href="scan.html"      class="nav-link">종목 찾기</a>
-    <a href="analyze.html"   class="nav-link">차트 분석</a>
-  </nav>
-  <div class="topbar-search">
-    <form class="search-form" onsubmit="return false;">
-      <input type="text" id="searchInput" class="search-input" placeholder="종목명 또는 티커 검색…" autocomplete="off">
-    </form>
-    <div id="searchDropdown" class="search-dropdown hidden"></div>
-  </div>
-</header>
-<div class="ticker-strip"><div class="ticker-track" id="tickerTrack">
-  <div class="ticker-item"><span class="ti-name">시장 데이터 로딩 중…</span></div>
-</div></div>
-<main class="main-content">
-  <section class="market-section">
-    <div class="ms-head">
-      <div class="ms-flag-title"><span class="ms-flag">🇰🇷</span><span class="ms-title">한국 시장</span></div>
-      <span class="ms-updated" id="krUpdated"></span>
-    </div>
-    <div class="ms-body">
-      <div class="ms-quotes-col">
-        <div class="ms-quotes" id="krQuotes"><div class="mq-skeleton"></div><div class="mq-skeleton"></div></div>
-      </div>
-      <div class="ms-highs-col">
-        <div class="ms-highs-head">
-          <span>52주 신고가</span>
-          <div class="market-tabs">
-            <button class="mtab active" onclick="load52h('kospi',this)">KOSPI</button>
-            <button class="mtab"        onclick="load52h('kosdaq',this)">KOSDAQ</button>
-          </div>
-        </div>
-        <div id="high52Grid" class="high52-grid"><div class="h52-skeleton"></div></div>
-        <div id="high52MoreWrap" class="more-wrap hidden">
-          <button class="more-btn" onclick="loadMore52h()">자세히 보기 ▼</button>
-        </div>
-      </div>
-    </div>
-  </section>
-  <section class="market-section">
-    <div class="ms-head">
-      <div class="ms-flag-title"><span class="ms-flag">🇺🇸</span><span class="ms-title">미국 시장</span></div>
-      <span class="ms-updated" id="usUpdated"></span>
-    </div>
-    <div class="ms-body">
-      <div class="ms-quotes-col">
-        <div class="ms-quotes" id="usQuotes"><div class="mq-skeleton"></div><div class="mq-skeleton"></div></div>
-      </div>
-      <div class="ms-highs-col">
-        <div class="ms-highs-head"><span>52주 신고가</span></div>
-        <div id="usHigh52Grid" class="high52-grid"><div class="h52-skeleton"></div></div>
-        <div id="usHigh52MoreWrap" class="more-wrap hidden">
-          <button class="more-btn" onclick="loadMoreUs52h()">자세히 보기 ▼</button>
-        </div>
-      </div>
-    </div>
-  </section>
-</main>
-<script type="module" src="js/dashboard.js"></script>
+<script>window.location.replace("index.html");</script>
 </body>
 </html>

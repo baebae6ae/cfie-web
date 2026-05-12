@@ -21,7 +21,7 @@ async function _fetch(url) {
 // ── OHLCV 데이터 (캔들 데이터) ────────────────────
 // range: 1d 5d 1mo 3mo 6mo 1y 2y 5y 10y ytd max
 // interval: 1m 5m 15m 30m 1h 1d 1wk 1mo
-export async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
+async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
   const url = `${BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&events=div%2Csplit`;
   const json = await _fetch(url);
   const result = json?.chart?.result?.[0];
@@ -43,7 +43,7 @@ export async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
 }
 
 // ── 현재가 / 당일 등락 ────────────────────────────
-export async function fetchQuote(ticker) {
+async function fetchQuote(ticker) {
   const url = `${BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
   const json = await _fetch(url);
   const meta = json?.chart?.result?.[0]?.meta;
@@ -60,7 +60,7 @@ export async function fetchQuote(ticker) {
 }
 
 // ── 종목 검색 ────────────────────────────────────
-export async function searchTicker(query) {
+async function searchTicker(query) {
   if (!query || query.length < 1) return [];
   const url = `${BASE}/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=0&enableFuzzyQuery=true&quotesCount=8`;
   try {
@@ -75,7 +75,7 @@ export async function searchTicker(query) {
 }
 
 // ── 여러 종목 현재가 일괄 ─────────────────────────
-export async function fetchMultiQuote(tickers) {
+async function fetchMultiQuote(tickers) {
   const results = {};
   await Promise.allSettled(tickers.map(async t => {
     try { results[t] = await fetchQuote(t); } catch { results[t] = null; }

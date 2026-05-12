@@ -1,56 +1,125 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CFIE — 종목 찾기</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="css/common.css"><link rel="stylesheet" href="css/scan.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CFIE v4.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="css/common.css">
+<link rel="stylesheet" href="css/scan.css">
 </head>
 <body>
+
 <header class="topbar">
   <div class="topbar-brand">
-    <a href="dashboard.html" style="text-decoration:none">
-      <span class="logo">CFIE</span><span class="ver">v4.0</span>
-    </a>
+    <a href="index.html" class="logo" style="text-decoration:none">CFIE</a>
+    <span class="ver">v4.0</span>
   </div>
   <nav class="topbar-nav">
-    <a href="dashboard.html" class="nav-link">대시보드</a>
-    <a href="scan.html"      class="nav-link">종목 찾기</a>
-    <a href="analyze.html"   class="nav-link">차트 분석</a>
+    <a href="index.html"  class="nav-link" data-page="index.html">대시보드</a>
+    <a href="scan.html"   class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
+    <a href="mypage.html" class="nav-link" data-page="mypage.html">마이 페이지</a>
   </nav>
   <div class="topbar-search">
     <form class="search-form" onsubmit="return false;">
-      <input type="text" id="searchInput" class="search-input" placeholder="종목명 또는 티커 검색…" autocomplete="off">
+      <input type="text" id="searchInput" class="search-input"
+             placeholder="종목명 또는 티커 검색…" autocomplete="off">
+      <button type="button" class="search-btn" onclick="doSearch()">⌕</button>
     </form>
     <div id="searchDropdown" class="search-dropdown hidden"></div>
   </div>
+  <div class="topbar-right">
+    <span id="clockText" class="clock"></span>
+  </div>
 </header>
-<div class="ticker-strip"><div class="ticker-track" id="tickerTrack">
-  <div class="ticker-item"><span class="ti-name">시장 데이터 로딩 중…</span></div>
-</div></div>
+
+<!-- 로딩 오버레이 -->
+<div id="loadingOverlay" class="loading-overlay" style="display:none">
+  <div class="spinner"></div>
+  <p id="loadingMsg" style="margin-top:16px;color:var(--text2)">스캔 중…</p>
+</div>
+
 <main class="main-content">
-  <div class="scan-header">
-    <h1 class="scan-title">신규 진입 종목 찾기</h1>
-    <p class="scan-desc">FIS 점수 기준으로 최적 진입 타이밍 종목을 발굴합니다</p>
+
+  <div class="scan-hero">
+    <h1>신규 진입 종목 찾기</h1>
+    <p>FIS 점수 기반 진입 후보 또는 쿠모 브레이크아웃 패턴 종목을 자동 발굴합니다</p>
   </div>
-  <div class="scan-controls">
-    <div class="scan-tabs">
-      <button class="stab active" onclick="setMarket('kospi',this)">KOSPI</button>
-      <button class="stab"        onclick="setMarket('kosdaq',this)">KOSDAQ</button>
-      <button class="stab"        onclick="setMarket('us',this)">미국</button>
+
+  <!-- 스캔 유형 탭 -->
+  <div class="scan-type-tabs">
+    <button class="stab active" data-type="fis"  onclick="selectScanType('fis')">FIS 진입 스캔</button>
+    <button class="stab"        data-type="kumo" onclick="selectScanType('kumo')">쿠모 브레이크아웃</button>
+  </div>
+  <div id="kumoDesc" class="kumo-desc" style="display:none">
+    <strong>쿠모 브레이크아웃 (Kumo Breakout)</strong> — 주봉 기준 구름대(Kumo) 아래에서 20주 이상 체류 후,
+    구름이 얇아지며 반전(Kumo Twist)되는 시점에 가격이 구름을 상향 돌파한 종목을 자동 발굴합니다.
+  </div>
+
+  <!-- 마켓 탭 -->
+  <div class="market-tabs">
+    <button class="mtab active" data-market="kospi"  onclick="selectMarket('kospi')">🇰🇷 코스피</button>
+    <button class="mtab"        data-market="kosdaq" onclick="selectMarket('kosdaq')">📊 코스닥</button>
+    <button class="mtab"        data-market="us"     onclick="selectMarket('us')">🇺🇸 미국</button>
+  </div>
+
+  <button id="scanBtn" class="scan-btn" onclick="doScan()">스캔 시작</button>
+
+  <!-- 결과 섹션 -->
+  <div id="resultsSection" style="display:none">
+    <div class="result-header">
+      <span class="result-count" id="resultCount">0개</span>
+      <span class="result-note"  id="resultLabel"></span>
     </div>
-    <div class="scan-type-tabs">
-      <button class="styp active" onclick="setScanType('fis',this)">FIS 진입</button>
-      <button class="styp"        onclick="setScanType('kumo',this)">쿠모 돌파</button>
+    <div class="candidates-grid" id="candidatesGrid"></div>
+    <div id="scanMoreWrap" class="more-wrap" style="display:none">
+      <button id="scanMoreBtn" class="more-btn" onclick="loadMoreScan()">자세히 보기</button>
     </div>
-    <button class="scan-btn" onclick="doScan()">스캔 시작</button>
   </div>
-  <div id="scanStatus" class="scan-status">스캔 버튼을 눌러 시작하세요</div>
-  <div id="scanResults" class="scan-results"></div>
-  <div id="scanMoreWrap" class="more-wrap hidden">
-    <button class="more-btn" onclick="loadMoreScan()">자세히 보기 ▼</button>
-  </div>
+
 </main>
-<script type="module" src="js/scan.js"></script>
+
+<footer class="footer">
+  본 서비스는 참고용 정보이며 투자 권유가 아닙니다. 투자 결과에 대한 책임은 투자자 본인에게 있습니다.
+</footer>
+
+<!-- 신규 진입 매수 모달 -->
+<div id="scanBuyModal" class="modal-overlay" style="display:none">
+  <div class="modal-box modal-box-wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">신규 진입 등록</div>
+        <div class="modal-sub" id="scanModalSub"></div>
+      </div>
+    </div>
+    <div class="mbuy-qty-row">
+      <label class="mbuy-qty-label">수량 (주)</label>
+      <input type="number" id="scanModalQty" class="mbuy-qty-input" min="1" value="1" oninput="onScanQtyChange()">
+      <span class="mbuy-invest" id="scanInvest"></span>
+    </div>
+    <div class="mbuy-price-row">
+      <label class="mbuy-price-label">진입가</label>
+      <input type="number" id="scanModalPrice" class="mbuy-price-input" min="0" step="1" oninput="onScanPriceChange()">
+      <span class="mbuy-price-sub">현재가 기준 자동입력</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeScanBuyModal()">취소</button>
+      <button class="btn-confirm" onclick="confirmScanBuy()">진입 등록</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/yahoo.js"></script>
+<script src="js/indicators.js"></script>
+<script src="js/common.js"></script>
+<script src="js/scan.js"></script>
+<nav class="mobile-nav">
+  <a href="index.html"  class="mn-item"><span class="mn-icon">📊</span>대시보드</a>
+  <a href="scan.html"   class="mn-item"><span class="mn-icon">🔍</span>종목 탐색</a>
+  <a href="mypage.html" class="mn-item"><span class="mn-icon">💼</span>마이페이지</a>
+</nav>
 </body>
 </html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CFIE v4.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="css/common.css">
+<link rel="stylesheet" href="css/mypage.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <a href="index.html" class="logo" style="text-decoration:none">CFIE</a>
+    <span class="ver">v4.0</span>
+  </div>
+  <nav class="topbar-nav">
+    <a href="index.html"  class="nav-link" data-page="index.html">대시보드</a>
+    <a href="scan.html"   class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
+    <a href="mypage.html" class="nav-link" data-page="mypage.html">마이 페이지</a>
+  </nav>
+  <div class="topbar-search">
+    <form class="search-form" onsubmit="return false;">
+      <input type="text" id="searchInput" class="search-input"
+             placeholder="종목명 또는 티커 검색…" autocomplete="off">
+      <button type="button" class="search-btn" onclick="doSearch()">⌕</button>
+    </form>
+    <div id="searchDropdown" class="search-dropdown hidden"></div>
+  </div>
+  <div class="topbar-right">
+    <span id="clockText" class="clock"></span>
+  </div>
+</header>
+
+<main class="main-content">
+
+  <div class="mypage-hero">
+    <h1>마이 페이지</h1>
+    <p>보유 종목의 수익률과 포트폴리오 현황을 확인하세요</p>
+  </div>
+
+  <!-- 요약 카드 -->
+  <div id="mpSummarySection" class="mp-summary">
+    <div class="mp-card">
+      <div class="mp-card-label">총 투자금액</div>
+      <div class="mp-card-value" id="mpTotalCost">—</div>
+    </div>
+    <div class="mp-card">
+      <div class="mp-card-label">총 평가금액</div>
+      <div class="mp-card-value" id="mpTotalValue">—</div>
+    </div>
+    <div class="mp-card">
+      <div class="mp-card-label">총 손익</div>
+      <div class="mp-card-value" id="mpTotalProfit">—</div>
+    </div>
+    <div class="mp-card">
+      <div class="mp-card-label">수익률</div>
+      <div class="mp-card-value" id="mpTotalPct">—</div>
+    </div>
+  </div>
+
+  <!-- 포지션 테이블 -->
+  <div id="mpTableWrap" class="mp-table-wrap">
+    <div class="mp-table-header">
+      <span class="mp-table-title">보유 종목</span>
+      <button class="mp-refresh-btn" onclick="loadMyPage()">↺ 새로고침</button>
+    </div>
+    <div class="mp-empty">
+      <div class="mp-empty-icon">⏳</div>
+      <div class="mp-empty-title">로딩 중…</div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  본 서비스는 참고용 정보이며 투자 권유가 아닙니다. 투자 결과에 대한 책임은 투자자 본인에게 있습니다.
+</footer>
+
+<!-- 추가 매수 모달 -->
+<div id="mpBuyModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">추가 매수</div>
+      <div class="modal-sub" id="mpBuyModalSub"></div>
+    </div>
+    <div class="form-row">
+      <label>수량 (주)</label>
+      <input type="number" id="mpBuyQty"   class="modal-input" min="1" value="1">
+    </div>
+    <div class="form-row">
+      <label>매수가</label>
+      <input type="number" id="mpBuyPrice" class="modal-input" min="0" step="0.01">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel"  onclick="closeMpBuyModal()">취소</button>
+      <button class="btn-confirm" onclick="confirmMpBuy()">매수 등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- 매도 모달 -->
+<div id="mpSellModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">매도</div>
+      <div class="modal-sub" id="mpSellModalSub"></div>
+    </div>
+    <div class="form-row">
+      <label>매도 수량 (주)</label>
+      <input type="number" id="mpSellQty" class="modal-input" min="1" value="1">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel"  onclick="closeMpSellModal()">취소</button>
+      <button class="btn-confirm btn-part-sell" onclick="confirmMpSell(false)">부분 매도</button>
+      <button class="btn-full-sell" onclick="confirmMpSell(true)">전량 매도</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/yahoo.js"></script>
+<script src="js/common.js"></script>
+<script src="js/mypage.js"></script>
+<nav class="mobile-nav">
+  <a href="index.html"  class="mn-item"><span class="mn-icon">📊</span>대시보드</a>
+  <a href="scan.html"   class="mn-item"><span class="mn-icon">🔍</span>종목 탐색</a>
+  <a href="mypage.html" class="mn-item"><span class="mn-icon">💼</span>마이페이지</a>
+</nav>
+</body>
+</html>
