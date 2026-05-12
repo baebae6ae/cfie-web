@@ -99,7 +99,6 @@ async function loadMarketMap(region) {
 
   if (_mapCache[region]) { _drawMap(region, body, _mapCache[region]); return; }
   body.innerHTML = '<div class="map-loading">히트맵 로딩 중…</div>';
-
   const market = region === "KR" ? "kospi" : "us";
   try {
     // 유니버스에서 종목 목록 로드
@@ -115,12 +114,21 @@ async function loadMarketMap(region) {
 
     const data = sample.map(({ ticker, name }) => {
       const q = quotes[ticker];
-      const pct = q ? q.changePct : 0;
-      return { name: name || ticker, ticker, sector: "기타", pct, value: 1 };
-    }).filter(d => d.pct !== 0);
+      const changePct = q ? (q.changePct || 0) : 0;
+      // short: 이름이 길면 앞 4자, 영어면 ticker 사용
+      const short = name ? (name.length > 4 ? name.slice(0, 4) : name) : ticker;
+      return {
+        ticker,
+        name: name || ticker,
+        short,
+        change_pct: Math.round(changePct * 100) / 100,
+        sector: "기타",
+        value: 1,
+      };
+    });
 
-    _mapCache[region] = data;
-    _drawMap(region, body, data);
+    _mapCache[region] = { stocks: data };
+    _drawMap(region, body, { stocks: data });
   } catch(e) {
     body.innerHTML = '<div class="map-loading" style="color:var(--neutral-500);font-size:0.8rem">히트맵 데이터 로딩 실패</div>';
   }
