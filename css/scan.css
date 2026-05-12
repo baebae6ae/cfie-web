@@ -865,3 +865,8 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* 쿠모 카드 */
+.kumo-badge { background:#0047AB !important; color:#fff !important; }
+.kumo-card .cc-label.bull { color:#CC0000; }
+.kumo-card .cc-label.bear { color:#0047AB; }

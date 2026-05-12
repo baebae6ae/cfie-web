@@ -892,3 +892,42 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── 진입 타이밍 5컴포넌트 breakdown ─────────── */
+.entry-comp-grid { display:flex; flex-direction:column; gap:4px; margin-top:8px; }
+.entry-comp-row  { display:flex; align-items:center; gap:6px; font-size:12px; }
+.ec-label { width:68px; color:var(--text2); flex-shrink:0; }
+.ec-track { flex:1; height:6px; background:#e8e8e5; border-radius:3px; overflow:hidden; }
+.ec-fill  { height:100%; background:#1565C0; border-radius:3px; transition:width .3s; }
+.ec-val   { width:44px; text-align:right; color:var(--text2); font-size:11px; }
+
+/* 진입 구조 점수 */
+.setup-scores { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+.ss-item { font-size:11px; background:rgba(21,101,192,0.08); color:#1565C0;
+           padding:2px 6px; border-radius:4px; }
+.ss-item b { margin-left:4px; font-weight:700; }
+
+/* 핵심 메트릭 그리드 */
+.entry-metrics-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; margin-top:8px; }
+.emg-item { background:#f4f4f0; border-radius:4px; padding:4px 6px; font-size:11px; text-align:center; }
+.emg-item span { display:block; color:var(--text2); font-size:10px; margin-bottom:1px; }
+.emg-item b { font-weight:700; color:var(--text1); }
+
+/* 진입 setup 태그 */
+.setup-tag  { background:#e8f0fe; color:#1565C0; padding:1px 5px; border-radius:4px; font-size:11px; font-weight:600; }
+.setup-tag2 { background:#fce8e6; color:#C0392B; padding:1px 5px; border-radius:4px; font-size:11px; }
+
+/* 쿠모 카드 */
+.kumo-badge { background:#0047AB !important; }
+.kumo-card .cc-label.bull { color:#CC0000; }
+.kumo-card .cc-label.bear { color:#0047AB; }
+/* chart-controls (replaces action-bar) */
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--newsprint-border);
+  background: var(--newsprint-bg);
+}

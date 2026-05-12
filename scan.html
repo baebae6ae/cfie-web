@@ -19,7 +19,6 @@
   <nav class="topbar-nav">
     <a href="index.html"  class="nav-link" data-page="index.html">대시보드</a>
     <a href="scan.html"   class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
-    <a href="mypage.html" class="nav-link" data-page="mypage.html">마이 페이지</a>
   </nav>
   <div class="topbar-search">
     <form class="search-form" onsubmit="return false;">
@@ -83,32 +82,6 @@
 <footer class="footer">
   본 서비스는 참고용 정보이며 투자 권유가 아닙니다. 투자 결과에 대한 책임은 투자자 본인에게 있습니다.
 </footer>
-
-<!-- 신규 진입 매수 모달 -->
-<div id="scanBuyModal" class="modal-overlay" style="display:none">
-  <div class="modal-box modal-box-wide">
-    <div class="modal-header">
-      <div>
-        <div class="modal-title">신규 진입 등록</div>
-        <div class="modal-sub" id="scanModalSub"></div>
-      </div>
-    </div>
-    <div class="mbuy-qty-row">
-      <label class="mbuy-qty-label">수량 (주)</label>
-      <input type="number" id="scanModalQty" class="mbuy-qty-input" min="1" value="1" oninput="onScanQtyChange()">
-      <span class="mbuy-invest" id="scanInvest"></span>
-    </div>
-    <div class="mbuy-price-row">
-      <label class="mbuy-price-label">진입가</label>
-      <input type="number" id="scanModalPrice" class="mbuy-price-input" min="0" step="1" oninput="onScanPriceChange()">
-      <span class="mbuy-price-sub">현재가 기준 자동입력</span>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeScanBuyModal()">취소</button>
-      <button class="btn-confirm" onclick="confirmScanBuy()">진입 등록</button>
-    </div>
-  </div>
-</div>
 
 <div id="toast" class="toast"></div>
 

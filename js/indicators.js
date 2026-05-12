@@ -1,392 +1,645 @@
-﻿// ═══════════════════════════════════════════════
-// CFIE 기술 지표 라이브러리 (JS port of engine/data.py + fis.py)
-// bars: [{ open, high, low, close, volume, time, date }]
-// ═══════════════════════════════════════════════
+﻿/* ============================================================
+   js/indicators.js  —  CFIE v4.0
+   engine/data.py::calc_indicators + engine/fis.py 완전 포팅
+   (Python 코드와 알고리즘 100% 동일)
+   ============================================================ */
 
-// ── 헬퍼 ─────────────────────────────────────────
-const clip  = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-const fnum  = (v, def = 0) => (v == null || isNaN(v)) ? def : +v;
-const rangePos = (c, lo, hi, def = 0.5) => hi <= lo ? def : clip((c - lo) / (hi - lo), 0, 1);
-
-// ── EMA ──────────────────────────────────────────
-function ema(closes, span) {
-  const k = 2 / (span + 1), out = new Array(closes.length).fill(null);
-  let e = closes[0];
-  for (let i = 0; i < closes.length; i++) {
-    if (closes[i] == null) { out[i] = null; continue; }
-    e = i === 0 ? closes[i] : closes[i] * k + e * (1 - k);
-    out[i] = e;
-  }
-  return out;
+// ── 기본 유틸 ─────────────────────────────────────────────
+function _clip(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function _fnum(v, def = 0.0) {
+  if (v === null || v === undefined) return def;
+  const n = Number(v); return (isNaN(n) || !isFinite(n)) ? def : n;
+}
+function _rangePos(close, low, high, def = 0.5) {
+  if (high <= low) return def;
+  return _clip((close - low) / (high - low), 0.0, 1.0);
 }
 
-// ── ATR ──────────────────────────────────────────
-function atr(bars, period = 14) {
-  const n = bars.length, out = new Array(n).fill(null);
-  const tr = bars.map((b, i) => {
-    if (i === 0) return b.high - b.low;
-    const pc = bars[i-1].close;
-    return Math.max(b.high - b.low, Math.abs(b.high - pc), Math.abs(b.low - pc));
-  });
-  let sum = tr.slice(0, period).reduce((a,b) => a+b, 0);
-  for (let i = period; i <= n; i++) {
-    if (i === period) { out[i-1] = sum / period; }
-    else { out[i-1] = (out[i-2] * (period-1) + tr[i-1]) / period; }
-    if (i < n) sum = sum - tr[i-period] + tr[i];
+// ── 롤링 계산 ─────────────────────────────────────────────
+// EMA alpha=2/(span+1) [pd.ewm(span=n, adjust=False)]
+function _emaArr(values, span) {
+  const alpha = 2 / (span + 1);
+  const result = new Array(values.length).fill(NaN);
+  let e = NaN;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || isNaN(v)) { result[i] = e; continue; }
+    e = isNaN(e) ? v : alpha * v + (1 - alpha) * e;
+    result[i] = e;
   }
-  return out;
+  return result;
 }
-
-// ── RSI ──────────────────────────────────────────
-function rsi(closes, period = 14) {
-  const out = new Array(closes.length).fill(null);
-  let avgGain = 0, avgLoss = 0;
-  for (let i = 1; i <= period; i++) {
-    const d = closes[i] - closes[i-1];
-    avgGain += d > 0 ? d : 0;
-    avgLoss += d < 0 ? -d : 0;
-  }
-  avgGain /= period; avgLoss /= period;
-  out[period] = 100 - 100 / (1 + avgGain / (avgLoss || 1e-10));
-  for (let i = period + 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i-1];
-    avgGain = (avgGain * (period-1) + (d > 0 ? d : 0)) / period;
-    avgLoss = (avgLoss * (period-1) + (d < 0 ? -d : 0)) / period;
-    out[i] = 100 - 100 / (1 + avgGain / (avgLoss || 1e-10));
-  }
-  return out;
-}
-
-// ── MACD ─────────────────────────────────────────
-function macd(closes, fast=12, slow=26, signal=9) {
-  const e12 = ema(closes, fast), e26 = ema(closes, slow);
-  const macdLine = closes.map((_, i) => (e12[i] == null || e26[i] == null) ? null : e12[i] - e26[i]);
-  const sigLine  = ema(macdLine.map(v => v ?? 0), signal);
-  const hist     = macdLine.map((v, i) => (v == null || sigLine[i] == null) ? null : v - sigLine[i]);
-  return { macd: macdLine, signal: sigLine, hist };
-}
-
-// ── Bollinger Bands ───────────────────────────────
-function bollinger(closes, period=20, mult=2) {
-  const mid = [], up = [], dn = [], width = [];
-  for (let i = 0; i < closes.length; i++) {
-    if (i < period - 1) { mid.push(null); up.push(null); dn.push(null); width.push(null); continue; }
-    const sl = closes.slice(i - period + 1, i + 1);
-    const m = sl.reduce((a,b) => a+b) / period;
-    const s = Math.sqrt(sl.reduce((a,b) => a + (b-m)**2, 0) / period);
-    mid.push(m); up.push(m + mult*s); dn.push(m - mult*s);
-    width.push(m > 0 ? (mult*2*s) / m : null);
-  }
-  return { mid, up, dn, width };
-}
-
-// ── ADX ──────────────────────────────────────────
-function adx(bars, period=14) {
-  const n = bars.length, adxOut = new Array(n).fill(null);
-  const plusDI = new Array(n).fill(null), minusDI = new Array(n).fill(null);
+// Wilder smoothing alpha=1/period [pd.ewm(alpha=1/period, adjust=False)]
+function _wildersArr(values, period) {
   const alpha = 1 / period;
-  let atrSmooth = 0, plusSmooth = 0, minusSmooth = 0, dxSmooth = null;
-  for (let i = 1; i < n; i++) {
-    const b = bars[i], p = bars[i-1];
-    const tr = Math.max(b.high - b.low, Math.abs(b.high - p.close), Math.abs(b.low - p.close));
-    const upMove = b.high - p.high, downMove = p.low - b.low;
-    const pdm = (upMove > downMove && upMove > 0) ? upMove : 0;
-    const mdm = (downMove > upMove && downMove > 0) ? downMove : 0;
-    atrSmooth   = i === 1 ? tr   : atrSmooth   * (1-alpha) + tr   * alpha;
-    plusSmooth  = i === 1 ? pdm  : plusSmooth  * (1-alpha) + pdm  * alpha;
-    minusSmooth = i === 1 ? mdm  : minusSmooth * (1-alpha) + mdm  * alpha;
-    if (atrSmooth === 0) continue;
-    const pDI = 100 * plusSmooth  / atrSmooth;
-    const mDI = 100 * minusSmooth / atrSmooth;
-    plusDI[i] = pDI; minusDI[i] = mDI;
-    const sumDI = pDI + mDI;
-    const dx = sumDI > 0 ? 100 * Math.abs(pDI - mDI) / sumDI : 0;
-    dxSmooth = dxSmooth == null ? dx : dxSmooth * (1-alpha) + dx * alpha;
-    adxOut[i] = dxSmooth;
+  const result = new Array(values.length).fill(NaN);
+  let e = NaN;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || isNaN(v)) { result[i] = e; continue; }
+    e = isNaN(e) ? v : alpha * v + (1 - alpha) * e;
+    result[i] = e;
   }
-  return { adx: adxOut, plusDI, minusDI };
+  return result;
 }
-
-// ── Ichimoku ──────────────────────────────────────
-function ichimoku(bars, t=9, k=26, s=52) {
-  const n = bars.length;
-  const tenkan = new Array(n).fill(null);
-  const kijun  = new Array(n).fill(null);
-  const senkouA = new Array(n).fill(null);
-  const senkouB = new Array(n).fill(null);
-  const chikou  = new Array(n).fill(null);
-
-  const hlMid = (bars, from, len) => {
-    let hi = -Infinity, lo = Infinity;
-    for (let i = from - len + 1; i <= from; i++) {
-      if (i < 0) continue;
-      hi = Math.max(hi, bars[i].high); lo = Math.min(lo, bars[i].low);
-    }
-    return hi === -Infinity ? null : (hi + lo) / 2;
-  };
-
-  for (let i = 0; i < n; i++) {
-    tenkan[i] = hlMid(bars, i, t);
-    kijun[i]  = hlMid(bars, i, k);
-    if (tenkan[i] != null && kijun[i] != null && i + k < n) {
-      senkouA[i + k] = (tenkan[i] + kijun[i]) / 2;
-    }
-    const sb = hlMid(bars, i, s);
-    if (sb != null && i + k < n) senkouB[i + k] = sb;
-    if (i - k >= 0) chikou[i - k] = bars[i].close;
+// SMA [pd.rolling(period).mean()]
+function _smaArr(values, period) {
+  const result = new Array(values.length).fill(NaN);
+  const buf = []; let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || isNaN(v)) { result[i] = NaN; continue; }
+    buf.push(v); sum += v;
+    if (buf.length > period) sum -= buf.shift();
+    result[i] = buf.length >= period ? sum / buf.length : NaN;
   }
-  return { tenkan, kijun, senkouA, senkouB, chikou };
+  return result;
+}
+// Rolling std [pd.rolling(period).std()]
+function _rollingStd(values, period) {
+  const result = new Array(values.length).fill(NaN);
+  const buf = [];
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || isNaN(v)) { result[i] = NaN; continue; }
+    buf.push(v);
+    if (buf.length > period) buf.shift();
+    if (buf.length < period) { result[i] = NaN; continue; }
+    const m = buf.reduce((a, b) => a + b, 0) / buf.length;
+    const va = buf.reduce((a, b) => a + (b - m) ** 2, 0) / (buf.length - 1);
+    result[i] = Math.sqrt(va);
+  }
+  return result;
+}
+function _rollingMax(values, period, minPeriods = 1) {
+  const result = new Array(values.length).fill(NaN);
+  const buf = [];
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || isNaN(v)) { result[i] = NaN; continue; }
+    buf.push(v);
+    if (buf.length > period) buf.shift();
+    result[i] = buf.length >= minPeriods ? Math.max(...buf) : NaN;
+  }
+  return result;
+}
+function _rollingMin(values, period, minPeriods = 1) {
+  const result = new Array(values.length).fill(NaN);
+  const buf = [];
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || isNaN(v)) { result[i] = NaN; continue; }
+    buf.push(v);
+    if (buf.length > period) buf.shift();
+    result[i] = buf.length >= minPeriods ? Math.min(...buf) : NaN;
+  }
+  return result;
 }
 
-// ── RVOL (상대 거래량) ─────────────────────────────
-function rvol(volumes, period=20) {
-  return volumes.map((v, i) => {
-    if (i < period) return null;
-    const avg = volumes.slice(i - period, i).reduce((a,b) => a+b, 0) / period;
-    return avg > 0 ? v / avg : null;
-  });
-}
-
-// ── ROC ───────────────────────────────────────────
-function roc(closes, period=20) {
-  return closes.map((c, i) => {
-    if (i < period || closes[i-period] === 0) return null;
-    return (c - closes[i-period]) / closes[i-period] * 100;
-  });
-}
-
-// ── 전체 지표 계산 (bars 배열 기준) ──────────────────
+// ── calcIndicators  (engine/data.py::calc_indicators 완전 포팅) ──────────
 function calcIndicators(bars) {
-  const closes  = bars.map(b => b.close);
+  const n = bars.length;
+  if (n === 0) return [];
+  const opens   = bars.map(b => b.open);
   const highs   = bars.map(b => b.high);
   const lows    = bars.map(b => b.low);
+  const closes  = bars.map(b => b.close);
   const volumes = bars.map(b => b.volume);
-  const n = bars.length;
 
-  const e5   = ema(closes, 5);
-  const e10  = ema(closes, 10);
-  const e20  = ema(closes, 20);
-  const e60  = ema(closes, 60);
-  const e120 = ema(closes, 120);
-  const atr14 = atr(bars, 14);
-  const atr60 = atr(bars, 60);
-  const rsi14  = rsi(closes, 14);
-  const macdR  = macd(closes);
-  const bb     = bollinger(closes, 20, 2);
-  const adxR   = adx(bars, 14);
-  const ichiR  = ichimoku(bars, 9, 26, 52);
-  const rvolArr = rvol(volumes, 20);
-  const roc20  = roc(closes, 20);
-  const roc5   = roc(closes, 5);
+  // EMA (alpha = 2/(span+1))
+  const ema5   = _emaArr(closes, 5);
+  const ema10  = _emaArr(closes, 10);
+  const ema20  = _emaArr(closes, 20);
+  const ema60  = _emaArr(closes, 60);
+  const ema120 = _emaArr(closes, 120);
+  const ema12  = _emaArr(closes, 12);
+  const ema26  = _emaArr(closes, 26);
 
-  const rangeW = Math.min(252, n);
-  const rHigh = closes.map((_, i) => Math.max(...highs.slice(Math.max(0, i-rangeW+1), i+1)));
-  const rLow  = closes.map((_, i) => Math.min(...lows.slice(Math.max(0, i-rangeW+1), i+1)));
+  // TR (True Range)
+  const tr = new Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    const hl = highs[i] - lows[i];
+    const hc = i > 0 ? Math.abs(highs[i] - closes[i-1]) : 0;
+    const lc = i > 0 ? Math.abs(lows[i] - closes[i-1]) : 0;
+    tr[i] = Math.max(hl, hc, lc);
+  }
+  // ATR14 uses SMA (data.py: tr.rolling(14).mean())
+  const atr14 = _smaArr(tr, 14);
+  const atr60 = _smaArr(tr, 60);
 
-  const spread = bars.map(b => Math.max(b.high - b.low, 1e-10));
-  const closePos = bars.map((b,i) => clip((b.close - b.low) / spread[i], 0, 1));
-  const upperWick = bars.map((b,i) => (b.high - Math.max(b.open, b.close)) / spread[i]);
+  // Bollinger Bands
+  const bb_mid   = _smaArr(closes, 20);
+  const bb_std   = _rollingStd(closes, 20);
+  const bb_up    = bb_mid.map((m, i) => isNaN(m)||isNaN(bb_std[i]) ? NaN : m + 2*bb_std[i]);
+  const bb_dn    = bb_mid.map((m, i) => isNaN(m)||isNaN(bb_std[i]) ? NaN : m - 2*bb_std[i]);
+  const bb_width = bb_mid.map((m, i) => (!m||isNaN(bb_up[i])) ? NaN : (bb_up[i]-bb_dn[i])/m);
 
+  // ADX: Wilder smoothing (alpha=1/14) — data.py: ewm(alpha=1/period, adjust=False)
+  const plusDM_raw  = new Array(n).fill(0);
+  const minusDM_raw = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const up = highs[i] - highs[i-1];
+    const dn = lows[i-1] - lows[i];
+    if (up > dn && up > 0) plusDM_raw[i] = up;
+    if (dn > up && dn > 0) minusDM_raw[i] = dn;
+  }
+  const atrW   = _wildersArr(tr, 14);
+  const pdiRaw = _wildersArr(plusDM_raw, 14);
+  const mdiRaw = _wildersArr(minusDM_raw, 14);
+  const plusDI  = pdiRaw.map((v, i) => atrW[i] > 0 ? 100*v/atrW[i] : NaN);
+  const minusDI = mdiRaw.map((v, i) => atrW[i] > 0 ? 100*v/atrW[i] : NaN);
+  const dx = plusDI.map((p, i) => {
+    const m = minusDI[i]; if (isNaN(p)||isNaN(m)) return NaN;
+    const s = p + m; return s === 0 ? 0 : 100*Math.abs(p-m)/s;
+  });
+  const adx14 = _wildersArr(dx, 14);
+
+  // Ichimoku (9/26/52) — 선행스팬A,B를 shift(26) 적용
+  const hi9  = _rollingMax(highs, 9,  9);
+  const lo9  = _rollingMin(lows,  9,  9);
+  const hi26 = _rollingMax(highs, 26, 26);
+  const lo26 = _rollingMin(lows,  26, 26);
+  const hi52 = _rollingMax(highs, 52, 52);
+  const lo52 = _rollingMin(lows,  52, 52);
+  const tenkan = hi9.map((h, i) => isNaN(h)||isNaN(lo9[i]) ? NaN : (h+lo9[i])/2);
+  const kijun  = hi26.map((h, i) => isNaN(h)||isNaN(lo26[i]) ? NaN : (h+lo26[i])/2);
+  const senkouA = new Array(n).fill(NaN);
+  const senkouB = new Array(n).fill(NaN);
+  for (let i = 26; i < n; i++) {
+    if (!isNaN(tenkan[i-26]) && !isNaN(kijun[i-26]))
+      senkouA[i] = (tenkan[i-26] + kijun[i-26]) / 2;
+    if (!isNaN(hi52[i-26]) && !isNaN(lo52[i-26]))
+      senkouB[i] = (hi52[i-26] + lo52[i-26]) / 2;
+  }
+
+  // Volume
+  const vol20 = _smaArr(volumes, 20);
+  const rvol  = volumes.map((v, i) => vol20[i] > 0 ? v/vol20[i] : NaN);
+
+  // 52주 위치 범위 (range_window=252)
+  const rw = 252, minP = Math.max(5, Math.floor(rw/4));
+  const rangeHigh = _rollingMax(highs, rw, minP);
+  const rangeLow  = _rollingMin(lows,  rw, minP);
+
+  // RSI (SMA버전 — data.py: rolling(14).mean())
+  const deltas = closes.map((c, i) => i===0 ? NaN : c-closes[i-1]);
+  const gains  = deltas.map(d => (isNaN(d)||d<0) ? 0 : d);
+  const losses = deltas.map(d => (isNaN(d)||d>0) ? 0 : -d);
+  const avgGain = _smaArr(gains, 14);
+  const avgLoss = _smaArr(losses, 14);
+  const rsi14 = avgGain.map((g, i) => {
+    const l = avgLoss[i]; if (isNaN(g)||isNaN(l)) return NaN;
+    return l===0 ? 100 : 100-100/(1+g/l);
+  });
+
+  // ROC20
+  const roc20 = closes.map((c, i) => (i<20||closes[i-20]===0) ? NaN : (c-closes[i-20])/closes[i-20]*100);
+
+  // MACD (12/26/9)
+  const macdLine = ema12.map((e12, i) => isNaN(e12)||isNaN(ema26[i]) ? NaN : e12-ema26[i]);
+  const macdSig  = _emaArr(macdLine, 9);
+  const macdHist = macdLine.map((m, i) => isNaN(m)||isNaN(macdSig[i]) ? NaN : m-macdSig[i]);
+
+  // 캔들 구조 보조
+  const spread   = highs.map((h, i) => h-lows[i]);
+  const closePos = closes.map((c, i) => spread[i]>0 ? _clip((c-lows[i])/spread[i],0,1) : 0.5);
+  const upperWick= highs.map((h, i) => spread[i]>0 ? (h-Math.max(opens[i],closes[i]))/spread[i] : 0);
+
+  // enriched bars 배열 조합
   return bars.map((b, i) => ({
     ...b,
-    EMA5: e5[i], EMA10: e10[i], EMA20: e20[i], EMA60: e60[i], EMA120: e120[i],
+    EMA5:  ema5[i],  EMA10: ema10[i], EMA20: ema20[i],
+    EMA60: ema60[i], EMA120: ema120[i],
     ATR14: atr14[i], ATR60: atr60[i],
-    RSI14: rsi14[i],
-    MACD: macdR.macd[i], MACD_SIG: macdR.signal[i], MACD_HIST: macdR.hist[i],
-    BB_MID: bb.mid[i], BB_UP: bb.up[i], BB_DN: bb.dn[i], BB_width: bb.width[i],
-    ADX14: adxR.adx[i], PLUS_DI14: adxR.plusDI[i], MINUS_DI14: adxR.minusDI[i],
-    ICH_TENKAN: ichiR.tenkan[i], ICH_KIJUN: ichiR.kijun[i],
-    ICH_SENKOU_A: ichiR.senkouA[i], ICH_SENKOU_B: ichiR.senkouB[i],
-    ICH_CHIKOU: ichiR.chikou[i],
-    RVOL: rvolArr[i], ROC20: roc20[i], ROC5: roc5[i],
-    RangeHigh: rHigh[i], RangeLow: rLow[i],
+    BB_MID: bb_mid[i], BB_UP: bb_up[i], BB_DN: bb_dn[i], BB_width: bb_width[i],
+    ADX14: adx14[i], PLUS_DI14: plusDI[i], MINUS_DI14: minusDI[i],
+    ICH_TENKAN: tenkan[i], ICH_KIJUN: kijun[i],
+    ICH_SENKOU_A: senkouA[i], ICH_SENKOU_B: senkouB[i],
+    Vol20: vol20[i], RVOL: rvol[i],
+    RangeHigh: rangeHigh[i], RangeLow: rangeLow[i],
+    RSI14: rsi14[i], ROC20: roc20[i],
+    MACD: macdLine[i], MACD_SIG: macdSig[i], MACD_HIST: macdHist[i],
     ClosePos: closePos[i], UpperWickRatio: upperWick[i],
   }));
 }
 
-// ══════════════════════════════════════════════════
-// FIS 점수 계산 (port of engine/fis.py)
-// ══════════════════════════════════════════════════
+// ── FIS 점수 함수들 (engine/fis.py 완전 포팅) ─────────────
 
-function scoreTrend(bars, i) {
-  const r = bars[i];
-  const c = fnum(r.close), e20 = fnum(r.EMA20, c), e60 = fnum(r.EMA60, c), e120 = fnum(r.EMA120, c);
+function _cloudStatus(bar) {
+  const ca = _fnum(bar.ICH_SENKOU_A, NaN);
+  const cb = _fnum(bar.ICH_SENKOU_B, NaN);
+  const c  = _fnum(bar.close);
+  if (isNaN(ca)||isNaN(cb)) return ["구름 정보 부족", 0];
+  const top = Math.max(ca, cb), bot = Math.min(ca, cb);
+  if (c > top) return ["구름 위 — 매수 우세", 1];
+  if (c < bot) return ["구름 아래 — 매도 우세", -1];
+  return ["구름 내부 — 중립", 0];
+}
+
+function scoreTrend(enriched, idx) {
+  const row   = enriched[idx];
+  const close = _fnum(row.close);
+  const ema20 = _fnum(row.EMA20, close);
+  const ema60 = _fnum(row.EMA60, close);
+  const ema120= _fnum(row.EMA120, close);
   let s = 0;
-  s += c >= e20  ? 6 : -6;
-  s += c >= e60  ? 7 : -7;
-  s += e20 >= e60  ? 6 : -6;
-  s += e60 >= e120 ? 5 : -5;
-  if (i >= 8) s += e20 >= fnum(bars[i-8].EMA20, e20) ? 3 : -3;
-  const adx = fnum(r.ADX14, 18), pdi = fnum(r.PLUS_DI14, 0), mdi = fnum(r.MINUS_DI14, 0);
+  s += close >= ema20  ? 6 : -6;
+  s += close >= ema60  ? 7 : -7;
+  s += ema20  >= ema60 ? 6 : -6;
+  s += ema60  >= ema120? 5 : -5;
+  if (idx >= 8) {
+    const prev20 = _fnum(enriched[idx-8].EMA20, ema20);
+    s += ema20 >= prev20 ? 3 : -3;
+  }
+  const adx = _fnum(row.ADX14, 18), pdi = _fnum(row.PLUS_DI14), mdi = _fnum(row.MINUS_DI14);
+  const atr  = _fnum(row.ATR14);
   if (adx >= 22) s += pdi >= mdi ? 3 : -3;
-  else if (adx < 15) {
-    const atr = fnum(r.ATR14, 0);
-    if (Math.abs(c - e20) < Math.max(atr, c * 0.005)) s -= 1;
-  }
-  return clip(s, -30, 30);
+  else if (adx < 15)
+    s -= Math.abs(close-ema20) < Math.max(atr, close*0.005) ? 1 : 0;
+  return _clip(s, -30, 30);
 }
 
-function scoreMomentum(bars, i) {
-  const r = bars[i];
-  const c = fnum(r.close), atrV = fnum(r.ATR14), atrPct = c > 0 && atrV > 0 ? atrV / c * 100 : 1;
-  const roc20V = fnum(r.ROC20), macdH = fnum(r.MACD_HIST), rsiV = fnum(r.RSI14, 50);
-  let s = clip((roc20V / Math.max(atrPct * 2.5, 0.5)) * 6, -8, 8);
-  if (atrV > 0) s += clip((macdH / atrV) * 120, -4, 4);
-  if (rsiV >= 55 && rsiV <= 68) s += 4;
-  else if (rsiV >= 45 && rsiV < 55) s += 1.5;
-  else if (rsiV >= 75) s -= 2.5;
-  else if (rsiV <= 35) s -= 4;
-  if (i >= 3) s += c >= fnum(bars[i-3].close, c) ? 2 : -2;
-  return clip(s, -20, 20);
+function scoreMomentum(enriched, idx) {
+  const row      = enriched[idx];
+  const close    = _fnum(row.close);
+  const atr      = _fnum(row.ATR14);
+  const atrPct   = (close>0 && atr>0) ? atr/close*100 : 1.0;
+  const roc20    = _fnum(row.ROC20);
+  const macdHist = _fnum(row.MACD_HIST);
+  const rsi      = _fnum(row.RSI14, 50);
+  const impulse  = roc20 / Math.max(atrPct*2.5, 0.5);
+  let s = _clip(impulse*6, -8, 8);
+  if (atr > 0) s += _clip((macdHist/atr)*120, -4, 4);
+  if (55<=rsi&&rsi<=68) s += 4;
+  else if (45<=rsi&&rsi<55) s += 1.5;
+  else if (rsi>=75) s -= 2.5;
+  else if (rsi<=35) s -= 4;
+  if (idx >= 3) s += close >= _fnum(enriched[idx-3].close, close) ? 2 : -2;
+  return _clip(s, -20, 20);
 }
 
-function scoreStructure(bars, i) {
-  if (i < 8) return 0;
-  const r = bars[i], win = bars.slice(Math.max(0, i-20), i+1), m = Math.floor(win.length/2);
+function scoreStructure(enriched, idx) {
+  if (idx < 8) return 0.0;
+  const row  = enriched[idx];
+  const win  = enriched.slice(Math.max(0, idx-20), idx+1);
+  const wn   = win.length;
   let s = 0;
-  const fH = fnum(win[0].high), mH = fnum(win[m].high, fH), lH = fnum(win[win.length-1].high, mH);
-  const fL = fnum(win[0].low),  mL = fnum(win[m].low, fL),  lL = fnum(win[win.length-1].low, mL);
-  if (lH > mH && mH > fH) s += 5; else if (lH < mH && mH < fH) s -= 5;
-  if (lL > mL && mL > fL) s += 5; else if (lL < mL && mL < fL) s -= 5;
-  const cA = fnum(r.ICH_SENKOU_A, NaN), cB = fnum(r.ICH_SENKOU_B, NaN);
-  if (!isNaN(cA) && !isNaN(cB)) {
-    const top = Math.max(cA, cB), bot = Math.min(cA, cB);
-    const c = fnum(r.close);
-    if (c > top) s += 4; else if (c < bot) s -= 4;
-  }
-  const c = fnum(r.close), kijun = fnum(r.ICH_KIJUN, fnum(r.EMA20, 0));
-  s += c >= kijun ? 3 : -3;
-  const rp = rangePos(c, Math.min(...win.map(b=>b.low)), Math.max(...win.map(b=>b.high)));
-  if (rp >= 0.65) s += 3; else if (rp <= 0.35) s -= 3;
-  const bearBars = win.slice(-6).filter(b => b.close < b.open && fnum(b.ClosePos, 0.5) < 0.4).length;
-  s -= Math.min(4, bearBars);
-  return clip(s, -20, 20);
+  const fh = _fnum(win[0].high), mh = _fnum(win[Math.floor(wn/2)].high, fh), lh = _fnum(win[wn-1].high, mh);
+  const fl = _fnum(win[0].low),  ml = _fnum(win[Math.floor(wn/2)].low, fl),  ll = _fnum(win[wn-1].low, ml);
+  if (lh>mh&&mh>fh) s+=5; else if (lh<mh&&mh<fh) s-=5;
+  if (ll>ml&&ml>fl) s+=5; else if (ll<ml&&ml<fl) s-=5;
+  const [, cloudDir] = _cloudStatus(row);
+  s += cloudDir * 4;
+  const kijun = _fnum(row.ICH_KIJUN, _fnum(row.EMA20, 0));
+  const close  = _fnum(row.close);
+  s += close >= kijun ? 3 : -3;
+  const rh  = _fnum(row.RangeHigh, 0), rl = _fnum(row.RangeLow, 0);
+  const rp  = _rangePos(close, rl, rh);
+  if (rp>=0.65) s+=3; else if (rp<=0.35) s-=3;
+  // bearish bars tail(6) — 마지막 6봉 중 ClosePos<0.4 인 음봉 수
+  const tail6  = win.slice(Math.max(0, wn-6));
+  const bearN  = tail6.filter(b => b.close < b.open && _fnum(b.ClosePos,0.5) < 0.4).length;
+  s -= Math.min(4, bearN);
+  return _clip(s, -20, 20);
 }
 
-function scoreCompression(bars, i) {
-  const r = bars[i], c = fnum(r.close);
+function scoreCompression(enriched, idx) {
+  const row  = enriched[idx];
+  const atr14 = _fnum(row.ATR14);
+  const atr60 = _fnum(row.ATR60, atr14);
   let s = 0;
-  const a14 = fnum(r.ATR14), a60 = fnum(r.ATR60, a14);
-  if (a14 > 0 && a60 > 0) {
-    const ratio = a14 / a60;
-    if (ratio <= 0.85) s += 6; else if (ratio >= 1.25) s -= 4;
+  if (atr14>0 && atr60>0) {
+    const ratio = atr14/atr60;
+    if (ratio<=0.85) s+=6; else if (ratio>=1.25) s-=4;
   }
-  const bbW = fnum(r.BB_width, NaN);
+  const bbW   = _fnum(row.BB_width, NaN);
   if (!isNaN(bbW)) {
-    const hist = bars.slice(Math.max(0, i-60), i+1).map(b => b.BB_width).filter(v => v != null);
-    if (hist.length >= 10) {
-      const pctRank = hist.filter(v => v <= bbW).length / hist.length;
-      if (pctRank <= 0.25) s += 5; else if (pctRank >= 0.85) s -= 3;
+    const hist60 = enriched.slice(Math.max(0,idx-60), idx+1)
+                           .map(b => _fnum(b.BB_width, NaN))
+                           .filter(v => !isNaN(v));
+    if (hist60.length >= 10) {
+      const rank = hist60.filter(v => v <= bbW).length / hist60.length;
+      if (rank<=0.25) s+=5; else if (rank>=0.85) s-=3;
     }
   }
-  const rp = rangePos(c, fnum(r.RangeLow), fnum(r.RangeHigh));
-  if (rp >= 0.55 && rp <= 0.88) s += 5; else if (rp > 0.96) s -= 4; else if (rp < 0.35) s -= 5;
-  const e20 = fnum(r.EMA20, c);
-  if (a14 > 0) {
-    const stretch = Math.abs(c - e20) / a14;
-    if (stretch <= 1.2) s += 4; else if (stretch >= 3.0) s -= 4;
+  const close = _fnum(row.close);
+  const rh = _fnum(row.RangeHigh, 0), rl = _fnum(row.RangeLow, 0);
+  const rp = _rangePos(close, rl, rh);
+  if (0.55<=rp&&rp<=0.88) s+=5; else if (rp>0.96) s-=4; else if (rp<0.35) s-=5;
+  const ema20  = _fnum(row.EMA20, close);
+  if (atr14>0) {
+    const stretch = Math.abs(close-ema20)/atr14;
+    if (stretch<=1.2) s+=4; else if (stretch>=3.0) s-=4;
   }
-  return clip(s, -20, 20);
+  return _clip(s, -20, 20);
 }
 
-function scoreVolume(bars, i) {
-  const r = bars[i], c = fnum(r.close), o = fnum(r.open, c), cp = fnum(r.ClosePos, 0.5);
-  const rvolV = fnum(r.RVOL, 1);
+function scoreVolume(enriched, idx) {
+  const row   = enriched[idx];
+  const rvol  = _fnum(row.RVOL, 1.0);
+  const close = _fnum(row.close);
+  const open  = _fnum(row.open, close);
+  const cp    = _fnum(row.ClosePos, 0.5);
   let s = 0;
-  if (rvolV >= 1.8) s += 4; else if (rvolV >= 1.2) s += 2; else if (rvolV < 0.75) s -= 2;
-  if (c >= o && cp >= 0.65) s += rvolV >= 1.0 ? 3 : 1.5;
-  else if (c < o && cp <= 0.35 && rvolV >= 1.2) s -= 4;
-  const rec = bars.slice(Math.max(0, i-4), i+1);
-  let upVol = 0, dnVol = 0;
-  rec.forEach(b => { if (b.close >= b.open) upVol += b.volume; else dnVol += b.volume; });
-  if (upVol > dnVol * 1.2) s += 3; else if (dnVol > upVol * 1.2 && dnVol > 0) s -= 3;
-  return clip(s, -10, 10);
+  if (rvol>=1.8) s+=4; else if (rvol>=1.2) s+=2; else if (rvol<0.75) s-=2;
+  if (close>=open && cp>=0.65) s += rvol>=1.0 ? 3 : 1.5;
+  else if (close<open && cp<=0.35 && rvol>=1.2) s-=4;
+  const win5   = enriched.slice(Math.max(0,idx-4), idx+1);
+  const upVol  = win5.filter(b => b.close>=b.open).reduce((a,b)=>a+_fnum(b.volume),0);
+  const dnVol  = win5.filter(b => b.close<b.open).reduce((a,b)=>a+_fnum(b.volume),0);
+  if (upVol > dnVol*1.2) s+=3;
+  else if (dnVol > upVol*1.2 && dnVol>0) s-=3;
+  return _clip(s, -10, 10);
 }
 
-function scoreRisk(bars, i) {
-  const r = bars[i], c = fnum(r.close), e20 = fnum(r.EMA20, c), atrV = fnum(r.ATR14);
-  const rvolV = fnum(r.RVOL, 1), cp = fnum(r.ClosePos, 0.5), o = fnum(r.open, c);
+function scoreRiskPenalty(enriched, idx) {
+  const row   = enriched[idx];
+  const close = _fnum(row.close);
+  const ema20 = _fnum(row.EMA20, close);
+  const ema60 = _fnum(row.EMA60, close);
+  const atr   = _fnum(row.ATR14);
+  const rvol  = _fnum(row.RVOL, 1.0);
+  const cp    = _fnum(row.ClosePos, 0.5);
+  const open  = _fnum(row.open, close);
   let p = 0;
-  if (atrV > 0) {
-    const g = (c - e20) / atrV;
-    if (g >= 3.5) p -= 14; else if (g >= 2.7) p -= 8;
-    else if (g <= -3.0) p -= 10; else if (g <= -2.2) p -= 6;
+  if (atr > 0) {
+    const g = (close-ema20)/atr;
+    if (g>=3.5) p-=14; else if (g>=2.7) p-=8;
+    else if (g<=-3.0) p-=10; else if (g<=-2.2) p-=6;
   }
-  const rec = bars.slice(Math.max(0, i-4), i+1);
-  const uwCount = rec.filter(b => fnum(b.UpperWickRatio, 0) > 0.45).length;
-  p -= Math.min(8, uwCount * 2);
-  if (rvolV >= 1.8 && cp <= 0.3 && c < o) p -= 6;
-  const rp = rangePos(c, fnum(r.RangeLow), fnum(r.RangeHigh));
-  if (rp >= 0.97 && c < o) p -= 4;
-  const adxV = fnum(r.ADX14, 18), e60 = fnum(r.EMA60, c);
-  if (adxV < 16 && Math.abs(c-e20) <= Math.max(atrV*0.5, c*0.004) && Math.abs(c-e60) <= Math.max(atrV*0.8, c*0.006)) p -= 4;
-  return clip(p, -30, 0);
+  const win5 = enriched.slice(Math.max(0,idx-4), idx+1);
+  const uwCnt = win5.filter(b => _fnum(b.UpperWickRatio,0) > 0.45).length;
+  p -= Math.min(8, uwCnt*2);
+  if (rvol>=1.8 && cp<=0.3 && close<open) p-=6;
+  const rh = _fnum(row.RangeHigh,0), rl = _fnum(row.RangeLow,0);
+  const rp = _rangePos(close, rl, rh);
+  if (rp>=0.97 && close<open) p-=4;
+  if (atr>0) {
+    const adx = _fnum(row.ADX14, 18);
+    if (adx<16 &&
+        Math.abs(close-ema20)<=Math.max(atr*0.5,close*0.004) &&
+        Math.abs(close-ema60)<=Math.max(atr*0.8,close*0.006))
+      p-=4;
+  }
+  return _clip(p, -30, 0);
 }
 
-// ── 전체 FIS 계산 ──────────────────────────────────
-function calcFIS(bars) {
-  return bars.map((b, i) => {
-    const trend  = scoreTrend(bars, i);
-    const mom    = scoreMomentum(bars, i);
-    const struct = scoreStructure(bars, i);
-    const comp   = scoreCompression(bars, i);
-    const vol    = scoreVolume(bars, i);
-    const risk   = scoreRisk(bars, i);
-    const raw    = 1.15*trend + mom + struct + 0.85*comp + 0.75*vol + risk;
-    const fisV   = clip(raw * 1.05, -100, 100);
-    return { ...b, TrendScore:trend, MomentumScore:mom, StructureScore:struct,
-             CompressionScore:comp, VolumeScore:vol, RiskPenalty:risk, FIS: fisV };
+// ── calcFIS (engine/fis.py::calc_fis 완전 포팅) ──────────────────────────
+function calcFIS(enriched) {
+  return enriched.map((row, i) => {
+    const trend    = scoreTrend(enriched, i);
+    const momentum = scoreMomentum(enriched, i);
+    const structure= scoreStructure(enriched, i);
+    const compr    = scoreCompression(enriched, i);
+    const volume   = scoreVolume(enriched, i);
+    const risk     = scoreRiskPenalty(enriched, i);
+    const raw = 1.15*trend + momentum + structure + 0.85*compr + 0.75*volume + risk;
+    const fis = _clip(raw*1.05, -100, 100);
+    return { ...row, TrendScore:trend, MomentumScore:momentum, StructureScore:structure,
+                     CompressionScore:compr, VolumeScore:volume, RiskPenalty:risk, FIS:fis };
   });
 }
 
-// ── 진입 점수 (마지막 봉 기준) ────────────────────────
-function calcEntryScore(bars) {
-  const r = bars[bars.length - 1];
-  const c = fnum(r.close), e10 = fnum(r.EMA10, c), e20 = fnum(r.EMA20, c), e60 = fnum(r.EMA60, c);
-  const atrV = fnum(r.ATR14), adxV = fnum(r.ADX14, 18);
-  const rsiV = fnum(r.RSI14, 50), rvolV = fnum(r.RVOL, 1);
-  const fis = fnum(r.FIS), trend = fnum(r.TrendScore);
-  const comp = fnum(r.CompressionScore), struct = fnum(r.StructureScore);
+// ── calcEntryScore (engine/fis.py::calc_entry_score 완전 포팅) ──────────
+function calcEntryScore(enriched) {
+  const n   = enriched.length;
+  const row = enriched[n-1];
+  const fis      = _fnum(row.FIS);
+  const trend    = _fnum(row.TrendScore);
+  const momentum = _fnum(row.MomentumScore);
+  const structure= _fnum(row.StructureScore);
+  const compr    = _fnum(row.CompressionScore);
+  const volume   = _fnum(row.VolumeScore);
+  const risk     = _fnum(row.RiskPenalty);
+  const close    = _fnum(row.close);
+  const open_p   = _fnum(row.open, close);
+  const ema10    = _fnum(row.EMA10, close);
+  const ema20    = _fnum(row.EMA20, close);
+  const ema60    = _fnum(row.EMA60, close);
+  const atr      = _fnum(row.ATR14);
+  const adx      = _fnum(row.ADX14, 18);
+  const rsi      = _fnum(row.RSI14, 50);
+  const rvol     = _fnum(row.RVOL, 1.0);
+  const bb_up    = _fnum(row.BB_UP, close);
+  const bb_dn    = _fnum(row.BB_DN, close);
+  const kijun    = _fnum(row.ICH_KIJUN, ema20);
+  const rangeLow = _fnum(row.RangeLow);
+  const rangeHigh= _fnum(row.RangeHigh);
+  const cp       = _fnum(row.ClosePos, 0.5);
+  const roc20    = _fnum(row.ROC20);
+  const gapAtr   = atr>0 ? (close-ema20)/atr : 0;
+  const gapPct   = ema20>0 ? (close-ema20)/ema20*100 : 0;
+  const look8    = enriched.slice(Math.max(0,n-8));
+  const recHigh  = Math.max(...look8.map(b=>_fnum(b.high,close)));
+  const recLow   = Math.min(...look8.map(b=>_fnum(b.low, close)));
+  const pbPct    = recHigh>0 ? (recHigh-close)/recHigh*100 : 0;
+  const bouncePct= recLow>0  ? (close-recLow)/recLow*100  : 0;
+  const rp       = _rangePos(close, rangeLow, rangeHigh);
+  const bbPos    = _rangePos(close, bb_dn, bb_up);
+  const hNow     = _fnum(row.MACD_HIST);
+  const hPrev    = n>=2 ? _fnum(enriched[n-2].MACD_HIST) : hNow;
+  const hPrev2   = n>=3 ? _fnum(enriched[n-3].MACD_HIST) : hPrev;
+  const histRising = hNow>=hPrev && hPrev>=hPrev2;
+  const histFalling= hNow<hPrev  && hPrev<hPrev2;
+  const cloudTop   = Math.max(_fnum(row.ICH_SENKOU_A,NaN), _fnum(row.ICH_SENKOU_B,NaN));
+  const cloudOk    = !isNaN(cloudTop) && close>=cloudTop;
 
-  let score = 0;
-  // 추세 품질
-  if (c > e20 && e20 > e60) score += 15; else if (c > e20) score += 7; else score -= 10;
-  // 눌림 품질
-  const atrGap = atrV > 0 ? (c - e20) / atrV : 0;
-  if (atrGap >= 0.3 && atrGap <= 1.5) score += 12; else if (atrGap > 1.5 && atrGap <= 2.5) score += 5; else score -= 8;
-  // 변동성 수축
-  if (comp >= 5) score += 12; else if (comp >= 0) score += 5; else score -= 5;
-  // 모멘텀
-  if (rsiV >= 50 && rsiV <= 68) score += 10; else if (rsiV > 68) score -= 5; else score += 3;
-  // 구름 위치
-  const cA = fnum(r.ICH_SENKOU_A, NaN), cB = fnum(r.ICH_SENKOU_B, NaN);
-  if (!isNaN(cA) && !isNaN(cB)) {
-    if (c > Math.max(cA, cB)) score += 10; else if (c < Math.min(cA, cB)) score -= 10;
+  // ① 추세 문맥 (0~30)
+  let ctx = 0;
+  if (fis>=65) ctx+=16; else if (fis>=45) ctx+=12; else if (fis>=25) ctx+=8; else if (fis<0) ctx-=6;
+  if (trend>=14) ctx+=8; else if (trend>=7) ctx+=4; else if (trend<0) ctx-=5;
+  if (structure>=8) ctx+=5; else if (structure<0) ctx-=4;
+  if (adx>=22) ctx+=4; else if (adx<15) ctx-=2;
+  if (cloudOk) ctx+=4;
+  if (risk>=-6) ctx+=4; else if (risk<=-15) ctx-=6;
+  ctx = _clip(ctx, 0, 30);
+
+  // ② 진입 구조 — 4가지 시나리오 중 최적 선택
+  let pullback = 0;
+  if (gapAtr>=-0.4&&gapAtr<=1.0) pullback+=10; else if (gapAtr>1.0&&gapAtr<=1.8) pullback+=6;
+  else if (gapAtr>2.8||gapAtr<-1.2) pullback-=6;
+  if (pbPct>=4&&pbPct<=12) pullback+=9; else if (pbPct>=2&&pbPct<4) pullback+=5; else if (pbPct>16) pullback-=5;
+  if (rsi>=43&&rsi<=58) pullback+=7; else if (rsi>=38&&rsi<43) pullback+=4; else if (rsi>72) pullback-=4;
+  if (rvol<=1.05) pullback+=4;
+  pullback = _clip(pullback, 0, 30);
+
+  let breakout = 0;
+  if (compr>=8) breakout+=8; else if (compr>=4) breakout+=4;
+  if (rp>=0.78&&rp<=0.96) breakout+=8; else if (rp>0.97) breakout-=4;
+  if (rvol>=1.4) breakout+=7; else if (rvol>=1.1) breakout+=3;
+  if (cp>=0.72&&close>=open_p) breakout+=4;
+  if (histRising) breakout+=5;
+  breakout = _clip(breakout, 0, 30);
+
+  let continu = 0;
+  if (close>=ema10&&ema10>=ema20&&ema20>=ema60) continu+=9;
+  else if (close>=ema10&&ema10>=ema20) continu+=5;
+  if (momentum>=8) continu+=7; else if (momentum>=3) continu+=4;
+  if (roc20>=8) continu+=5; else if (roc20>=4) continu+=3;
+  if (histRising) continu+=4;
+  if (rvol>=1.2&&cp>=0.65) continu+=5;
+  continu = _clip(continu, 0, 30);
+
+  let reversal = 0;
+  if (rsi<=35) reversal+=7; else if (rsi<=42) reversal+=4;
+  if (bouncePct>=4) reversal+=6; else if (bouncePct>=2) reversal+=3;
+  if (close>=ema10) reversal+=5;
+  if (histRising&&hNow>0) reversal+=5; else if (histRising) reversal+=3;
+  if (cp>=0.65&&rvol>=1.1) reversal+=4;
+  reversal = _clip(reversal, 0, 24);
+
+  const setupScores = {"추세 눌림":pullback,"압축 돌파":breakout,"모멘텀 지속":continu,"반전 초기":reversal};
+  const sorted = Object.entries(setupScores).sort((a,b)=>b[1]-a[1]);
+  const setupName  = sorted[0][0];
+  const primary    = sorted[0][1];
+  const secondary  = sorted[1][1];
+  const setupName2 = secondary>=18 ? sorted[1][0] : "";
+  let consensus = 0;
+  if (secondary>=20) consensus=(secondary-10)*0.30;
+  else if (secondary>=14) consensus=(secondary-10)*0.12;
+  const setupQuality = _clip(primary+consensus, 0, 30);
+
+  // ③ 확인 신호 (-6~24)
+  let trigger = 0;
+  if (close>=ema10) trigger+=5;
+  if (close>=ema20) trigger+=4;
+  if (close>=kijun) trigger+=4;
+  if (cp>=0.62) trigger+=4; else if (cp<=0.35) trigger-=4;
+  if (histRising) trigger+=5; else if (histFalling) trigger-=3;
+  if (rvol>=1.4&&close>=open_p) trigger+=4; else if (rvol<0.75&&setupName!=="추세 눌림") trigger-=2;
+  trigger = _clip(trigger, -6, 24);
+
+  // ④ 저항 여유 (-6~18)
+  let space = 0;
+  if (rp>=0.55&&rp<=0.9) space+=9; else if (rp>0.9&&rp<=0.96) space+=4;
+  else if (rp>0.97) space-=6; else if (rp<0.35) space-=3;
+  if (bbPos>=0.35&&bbPos<=0.82) space+=5; else if (bbPos>0.92) space-=4;
+  if (risk>=-4) space+=4; else if (risk<=-15) space-=4;
+  space = _clip(space, -6, 18);
+
+  // ⑤ 리스크 관리 (0~16)
+  let riskCtrl = 0;
+  if (risk>=-4) riskCtrl+=10; else if (risk>=-9) riskCtrl+=6; else if (risk>=-14) riskCtrl+=2; else riskCtrl-=4;
+  if (atr>0&&Math.abs(close-ema20)/atr<=2.2) riskCtrl+=4;
+  if (adx>=18) riskCtrl+=3;
+  riskCtrl = _clip(riskCtrl, 0, 16);
+
+  // 합산 → 정규화 /1.18
+  const rawTotal = ctx + setupQuality + trigger + space + riskCtrl;
+  const total    = _clip(Math.round(rawTotal/1.18), 0, 100);
+  let label;
+  if (total>=80) label="최적 진입 구간";
+  else if (total>=65) label="양호한 진입 구간";
+  else if (total>=50) label="조건부 진입 가능";
+  else label="진입 대기 구간";
+
+  return {
+    score: total, label,
+    setup_name: setupName, setup_name2: setupName2,
+    setup_scores: Object.fromEntries(Object.entries(setupScores).map(([k,v])=>[k,Math.round(v*10)/10])),
+    components: {
+      "추세문맥":   Math.round(ctx*10)/10,
+      "진입구조":   Math.round(setupQuality*10)/10,
+      "확인신호":   Math.round(trigger*10)/10,
+      "저항여유":   Math.round(space*10)/10,
+      "리스크관리": Math.round(riskCtrl*10)/10,
+    },
+    metrics: {
+      ema20_gap_pct: Math.round(gapPct*100)/100,
+      ema20_gap_atr: Math.round(gapAtr*100)/100,
+      pullback_pct:  Math.round(pbPct*100)/100,
+      bounce_pct:    Math.round(bouncePct*100)/100,
+      range_pos:     Math.round(rp*1000)/10,
+      bb_pos:        Math.round(bbPos*1000)/10,
+      rsi_reset:     Math.round(rsi*10)/10,
+      adx:           Math.round(adx*10)/10,
+    },
+  };
+}
+
+// ── makeJudgment (engine/fis.py::make_judgment 완전 포팅) ────────────────
+function makeJudgment(enriched) {
+  const n   = enriched.length;
+  const row = enriched[n-1];
+  const fis      = _fnum(row.FIS);
+  const trend    = _fnum(row.TrendScore);
+  const momentum = _fnum(row.MomentumScore);
+  const structure= _fnum(row.StructureScore);
+  const compr    = _fnum(row.CompressionScore);
+  const volume   = _fnum(row.VolumeScore);
+  const risk     = _fnum(row.RiskPenalty);
+  const rsi      = _fnum(row.RSI14, 50);
+  const rvol     = _fnum(row.RVOL, 1.0);
+  const close    = _fnum(row.close);
+  let label, label_color;
+  if (fis>=65) { label="강한 상승 우위"; label_color="#D32F2F"; }
+  else if (fis>=30) { label="상승 우위"; label_color="#E57373"; }
+  else if (fis>=5)  { label="중립 이상"; label_color="#F9A825"; }
+  else if (fis>=-20){ label="중립 약세"; label_color="#64B5F6"; }
+  else if (fis>=-50){ label="하락 우위"; label_color="#1565C0"; }
+  else              { label="강한 하락 우위"; label_color="#0D47A1"; }
+
+  const scores = { 추세:trend, 모멘텀:momentum, 구조:structure, 압축:compr, 거래량:volume, 위험감점:risk };
+  const posName = Object.entries(scores).reduce((a,b)=>b[1]>a[1]?b:a)[0];
+  const negName = Object.entries(scores).reduce((a,b)=>b[1]<a[1]?b:a)[0];
+
+  const clues = [];
+  if (trend>=14) clues.push("이평 정렬과 추세 기울기가 견조하다");
+  else if (trend<=-8) clues.push("이평 구조가 하방 쪽으로 틀어져 있다");
+  if (momentum>=8) clues.push("모멘텀 가속이 붙어 탄력이 살아 있다");
+  else if (momentum<=-6) clues.push("모멘텀 둔화가 뚜렷해 추격은 불리하다");
+  if (structure>=8) clues.push("고점/저점 구조가 우상향으로 유지된다");
+  else if (structure<=-6) clues.push("고점/저점 구조가 무너져 반등 신뢰가 낮다");
+  if (compr>=8) clues.push("압축 이후 확장 가능성이 열려 있다");
+  else if (compr<=-6) clues.push("위치상 저항 부담이 커 상단 여유가 좁다");
+  if (volume>=4) clues.push("거래 참여가 붙어 신호 신뢰도가 보강된다");
+  else if (volume<=-3) clues.push("거래 참여가 약해 신호 신뢰가 떨어진다");
+  if (!clues.length) {
+    if (fis>=20) clues.push("방향성은 우상향이나 확신 강도는 중간 수준이다");
+    else if (fis<=-20) clues.push("방향성은 하방 우세이며 복원 신호가 부족하다");
+    else clues.push("방향성 우위가 약해 추가 확인이 필요하다");
   }
-  // 거래량
-  if (rvolV >= 1.2) score += 8; else if (rvolV < 0.7) score -= 3;
-  // ADX
-  if (adxV >= 22) score += 8; else if (adxV < 15) score -= 5;
-  // 구조
-  if (struct >= 5) score += 5;
-  // FIS 베이스
-  score += fnum(r.FIS, 0) * 0.2;
+  const leadText = clues.slice(0,2).join(" · ");
+  const riskClues = [];
+  if (risk<=-15) riskClues.push("단기 과열/매물 부담이 커 리스크 관리가 우선이다");
+  else if (risk<=-8) riskClues.push("리스크 감점이 누적되어 진입 크기 조절이 필요하다");
+  else if (risk>=-3) riskClues.push("위험 감점이 낮아 관리 가능한 구간이다");
+  if (rsi>=72) riskClues.push(`RSI ${rsi.toFixed(1)}로 과열권이라 눌림 확인 후 접근이 유리하다`);
+  else if (rsi<=34) riskClues.push(`RSI ${rsi.toFixed(1)} 저점권으로 반등 신호 확인이 핵심이다`);
+  if (rvol>=1.8) riskClues.push("거래량 급증 구간이라 방향 확인 봉의 중요도가 높다");
+  else if (rvol<0.8) riskClues.push("거래량이 약해 돌파 신호의 지속성 검증이 필요하다");
 
-  return { score: clip(score, 0, 100), label: scoreLabel(score) };
+  let stance;
+  if (fis>=45) stance="보유는 추세선 이탈 전까지 우위가 유지되며 신규 진입은 눌림/재돌파 확인이 유리하다";
+  else if (fis>=10) stance="보유는 중립 관리가 적절하고 신규 진입은 타이밍 점수와 저항 여유를 함께 확인해야 한다";
+  else if (fis>=-20) stance="보유는 방어 비중을 높이고 신규 진입은 추세 복원 신호가 확인될 때까지 대기하는 편이 낫다";
+  else stance="보유는 손절 기준 중심 방어가 우선이며 신규 진입은 공격적으로 보기 어렵다";
+
+  const sl1 = `${leadText}. 핵심 강점은 ${posName}, 취약 지점은 ${negName}이며 FIS는 ${fis.toFixed(1)}이다.`;
+  const sl2 = `${stance}. ${riskClues[0]||"진입 전 손익비와 손절 기준을 먼저 고정하는 것이 좋다."} (RSI ${rsi.toFixed(1)}, RVOL ${rvol.toFixed(2)}x)`;
+
+  const [ichimokuStatus] = _cloudStatus(row);
+  let rsiStatus;
+  if (rsi>=70) rsiStatus=`과매수 (${rsi.toFixed(1)})`;
+  else if (rsi<=30) rsiStatus=`과매도 (${rsi.toFixed(1)})`;
+  else rsiStatus=`중립 (${rsi.toFixed(1)})`;
+
+  return {
+    fis, label, label_color, summary_l1:sl1, summary_l2:sl2,
+    ichimoku_status: ichimokuStatus, rsi_status: rsiStatus,
+    scores, price: close,
+  };
 }
 
-function scoreLabel(s) {
-  if (s >= 75) return { text: "최적 진입", color: "#0D7F3C" };
-  if (s >= 60) return { text: "우호적",   color: "#2ea44f" };
-  if (s >= 45) return { text: "중립",     color: "#B8860B" };
-  if (s >= 30) return { text: "신중",     color: "#e67e22" };
-  return          { text: "부적합",      color: "#C41D3A" };
+// ── 공통 포맷 헬퍼 ──────────────────────────────────────
+function fisColor(fis) {
+  if (fis>=65) return "#D32F2F"; if (fis>=30) return "#E57373";
+  if (fis>=5)  return "#F9A825"; if (fis>=-20) return "#64B5F6";
+  if (fis>=-50) return "#1565C0"; return "#0D47A1";
+}
+function fisLabelText(fis) {
+  if (fis>=65) return "강한 상승 우위"; if (fis>=30) return "상승 우위";
+  if (fis>=5)  return "중립 이상";      if (fis>=-20) return "중립 약세";
+  if (fis>=-50) return "하락 우위";     return "강한 하락 우위";
 }
 
-function fisLabel(fis) {
-  if (fis >= 50)  return { text: "강한 매수 신호", color: "#0D7F3C" };
-  if (fis >= 20)  return { text: "매수 우위",      color: "#2ea44f" };
-  if (fis >= -10) return { text: "중립",           color: "#B8860B" };
-  if (fis >= -30) return { text: "매도 우위",      color: "#e67e22" };
-  return           { text: "강한 매도 신호",       color: "#C41D3A" };
-}
