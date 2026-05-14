@@ -118,6 +118,32 @@
         <div id="indicatorChips" class="chip-grid"></div>
       </div>
 
+      <!-- 손절 분석 -->
+      <div class="sidebar-box">
+        <div class="sbox-header">✂ 손절 분석</div>
+        <div class="avg-cost-section">
+          <div class="avg-cost-row">
+            <label class="avg-cost-label">평단가</label>
+            <input type="number" id="avgCostInput" class="avg-cost-input"
+                   placeholder="예: 85000" min="0" step="1"
+                   oninput="onAvgCostChange()">
+          </div>
+          <div class="stop-loss-result">
+            <div class="sl-item sl-ts-item">
+              <span class="sl-key">트레일링 손절</span>
+              <span class="sl-val" id="slPrice">—</span>
+              <span class="sl-pct" id="slPct"></span>
+            </div>
+            <div class="sl-item">
+              <span class="sl-key">EMA20</span>
+              <span class="sl-val" id="slEMA20">—</span>
+              <span class="sl-sig" id="slEMASignal"></span>
+            </div>
+            <div class="sl-desc">최근 20봉 고점 − ATR(14)×2 기준</div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 

@@ -4,6 +4,10 @@ let _chart     = null;
 let _volChart  = null;
 let _macdChart = null;
 let _currentTicker = null;
+let _currentATR    = 0;
+let _currentHigh20 = 0;
+let _currentEMA20  = 0;
+let _currentIsKRW  = true;
 
 // ── 초기화 ──────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -41,6 +45,15 @@ async function loadChart(ticker) {
 
     const enriched = calcIndicators(bars);
     const fisBars  = calcFIS(enriched);
+
+    // 손절 분석용 전역 상태 업데이트
+    const _sl      = fisBars[fisBars.length - 1];
+    _currentATR    = _sl?.ATR14 || 0;
+    _currentEMA20  = _sl?.EMA20 || 0;
+    _currentHigh20 = fisBars.slice(-20).reduce((m, b) => Math.max(m, b.high || 0), 0);
+    _currentIsKRW  = (meta?.currency || "") !== "USD";
+    onAvgCostChange();
+
     const entry    = calcEntryScore(fisBars);
     const judgment = makeJudgment(fisBars);
 
@@ -64,6 +77,45 @@ async function loadChart(ticker) {
 }
 
 function reloadChart() { if (_currentTicker) loadChart(_currentTicker); }
+
+// ── 평단가 기반 손절 분석 ────────────────────────────────
+function onAvgCostChange() {
+  const input     = document.getElementById("avgCostInput");
+  const slPriceEl = document.getElementById("slPrice");
+  const slPctEl   = document.getElementById("slPct");
+  const slEMA20El = document.getElementById("slEMA20");
+  const slSigEl   = document.getElementById("slEMASignal");
+  if (!input) return;
+
+  const avgCost = parseFloat(input.value) || 0;
+  const dec     = _currentIsKRW ? 0 : 2;
+
+  // 트레일링 손절: 최근 20봉 고점 − ATR(14)×2
+  const tsRaw = (_currentHigh20 > 0 && _currentATR > 0)
+    ? _currentHigh20 - _currentATR * 2 : 0;
+  const ts = (_currentIsKRW && tsRaw > 0) ? Math.round(tsRaw) : tsRaw;
+
+  if (slPriceEl) slPriceEl.textContent = ts > 0 ? fmt(ts, dec) : "—";
+  if (slPctEl) {
+    if (ts > 0 && avgCost > 0) {
+      const pct = (ts - avgCost) / avgCost * 100;
+      slPctEl.textContent = (pct >= 0 ? "+" : "") + pct.toFixed(1) + "%";
+      slPctEl.style.color = pct >= 0 ? "var(--bull,#2ea043)" : "var(--bear,#e53935)";
+    } else {
+      slPctEl.textContent = "";
+    }
+  }
+  if (slEMA20El) slEMA20El.textContent = _currentEMA20 > 0 ? fmt(_currentEMA20, dec) : "—";
+  if (slSigEl) {
+    if (_currentEMA20 > 0 && avgCost > 0) {
+      const above = avgCost >= _currentEMA20;
+      slSigEl.textContent = above ? "✓ 상회" : "⬇ 하회";
+      slSigEl.style.color = above ? "var(--bull,#2ea043)" : "var(--bear,#e53935)";
+    } else {
+      slSigEl.textContent = "";
+    }
+  }
+}
 
 // ── 종목 헤더 ────────────────────────────────────────────
 function renderStockHeader(ticker, meta, bars, judgment) {
@@ -144,21 +196,23 @@ function renderChart(bars, fisBars, tf, meta) {
   });
   candles.setData(bars.map(b => ({time:b.time, open:b.open, high:b.high, low:b.low, close:b.close})));
 
-  const toSeries = (arr, key, col, width, title) => {
-    const data = arr.map((b,i)=>{ const v=b[key]; return (v!=null&&!isNaN(v))?{time:b.time,value:v}:null; }).filter(Boolean);
-    if (data.length) _chart.addLineSeries({color:col,lineWidth:width,title}).setData(data);
+  // lastValueVisible:false → 오른쪽 가격 레이블 숨김
+  // priceLineVisible:false → 수평 점선 숨김
+  const toSeries = (arr, key, col, width) => {
+    const data = arr.map(b=>{ const v=b[key]; return (v!=null&&!isNaN(v))?{time:b.time,value:v}:null; }).filter(Boolean);
+    if (data.length) _chart.addLineSeries({color:col,lineWidth:width,lastValueVisible:false,priceLineVisible:false}).setData(data);
   };
-  toSeries(fisBars,"EMA20","#E57373",1,"EMA20");
-  toSeries(fisBars,"EMA60","#1565C0",1,"EMA60");
-  toSeries(fisBars,"EMA120","#888888",1,"EMA120");
-  toSeries(fisBars,"ICH_TENKAN","#0047AB",1,"전환");
-  toSeries(fisBars,"ICH_KIJUN","#CC0000",1,"기준");
+  toSeries(fisBars,"EMA20","#E57373",1);
+  toSeries(fisBars,"EMA60","#1565C0",1);
+  toSeries(fisBars,"EMA120","#888888",1);
+  toSeries(fisBars,"ICH_TENKAN","#0047AB",1);
+  toSeries(fisBars,"ICH_KIJUN","#CC0000",1);
 
   // 볼린저밴드 상단/하단
   const bbUp = fisBars.map(b=>b.BB_UP!=null&&!isNaN(b.BB_UP)?{time:b.time,value:b.BB_UP}:null).filter(Boolean);
   const bbDn = fisBars.map(b=>b.BB_DN!=null&&!isNaN(b.BB_DN)?{time:b.time,value:b.BB_DN}:null).filter(Boolean);
-  if (bbUp.length) _chart.addLineSeries({color:"rgba(150,150,150,0.5)",lineWidth:1,lineStyle:2,title:"BB"}).setData(bbUp);
-  if (bbDn.length) _chart.addLineSeries({color:"rgba(150,150,150,0.5)",lineWidth:1,lineStyle:2}).setData(bbDn);
+  if (bbUp.length) _chart.addLineSeries({color:"rgba(150,150,150,0.5)",lineWidth:1,lineStyle:2,lastValueVisible:false,priceLineVisible:false}).setData(bbUp);
+  if (bbDn.length) _chart.addLineSeries({color:"rgba(150,150,150,0.5)",lineWidth:1,lineStyle:2,lastValueVisible:false,priceLineVisible:false}).setData(bbDn);
 
   if (volEl) {
     _volChart = LightweightCharts.createChart(volEl, { 

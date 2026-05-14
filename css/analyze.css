@@ -931,3 +931,22 @@
   border-bottom: 1px solid var(--newsprint-border);
   background: var(--newsprint-bg);
 }
+
+/* ── 손절 분석 ─────────────────────────────────────── */
+.avg-cost-section { padding: 10px 14px 14px; }
+.avg-cost-row     { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.avg-cost-label   { font-size:12px; color:var(--text2); white-space:nowrap; min-width:40px; }
+.avg-cost-input   {
+  flex:1; border:1px solid var(--newsprint-border,#ddd); border-radius:5px;
+  padding:6px 9px; font-size:13px; background:var(--newsprint-bg,#fff);
+  color:var(--newsprint-ink,#111); outline:none;
+}
+.avg-cost-input:focus { border-color:#1565C0; box-shadow:0 0 0 2px rgba(21,101,192,0.12); }
+.stop-loss-result { display:flex; flex-direction:column; gap:8px; }
+.sl-item   { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.sl-key    { font-size:11px; color:var(--text2); min-width:78px; }
+.sl-val    { font-size:15px; font-weight:700; color:var(--newsprint-ink,#111); }
+.sl-pct    { font-size:12px; font-weight:600; }
+.sl-sig    { font-size:12px; }
+.sl-ts-item .sl-val { color:var(--bear,#e53935); }
+.sl-desc   { font-size:10.5px; color:var(--text3,#aaa); margin-top:2px; }
