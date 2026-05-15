@@ -111,11 +111,18 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+function isKorean(q) { return /[가-힣]/.test(q); }
+
 async function _execSearch(q) {
   const dd = _searchDropdown();
   if (!dd) return;
   try {
-    const results = await searchTicker(q);
+    let results;
+    if (isKorean(q)) {
+      results = typeof searchKRX === "function" ? searchKRX(q) : [];
+    } else {
+      results = await searchTicker(q);
+    }
     if (!results.length) { closeDropdown(); return; }
     dd.innerHTML = results.slice(0, 7).map(r =>
       `<div class="dd-item" onclick="goAnalyze('${r.ticker}')">
@@ -131,6 +138,11 @@ async function doSearch() {
   const v = _searchInput()?.value.trim();
   if (!v) return;
   if (looksLikeTicker(v)) { goAnalyze(v.toUpperCase()); return; }
+  if (isKorean(v)) {
+    const krxResults = typeof searchKRX === "function" ? searchKRX(v) : [];
+    if (krxResults.length) { goAnalyze(krxResults[0].ticker); return; }
+    return;
+  }
   try {
     const results = await searchTicker(v);
     const first = results?.[0];

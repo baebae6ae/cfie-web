@@ -367,8 +367,22 @@ function renderEntryScore(entry) {
   const esBadge = document.getElementById("entryScoreBadge");
   if (esBadge) { esBadge.textContent = score.toFixed(0); esBadge.style.background = eCol; esBadge.style.color = "#fff"; }
   const statusEl = document.getElementById("entryStatus");
-  if (statusEl) statusEl.textContent =
-    score >= 80 ? "최적 진입 구간" : score >= 65 ? "양호한 진입 구간" : score >= 50 ? "조건부 진입 가능" : "진입 대기 구간";
+  const actionEl = document.getElementById("entryAction");
+  if (statusEl) {
+    if (score >= 80) {
+      statusEl.textContent = "최적 진입 구간";
+      if (actionEl) actionEl.textContent = "➡ 적극 진입 고려 — 추세·구조·신호 모두 우호적. 손절선 설정 후 비중 집행";
+    } else if (score >= 65) {
+      statusEl.textContent = "양호한 진입 구간";
+      if (actionEl) actionEl.textContent = "➡ 분할 진입 가능 — 소량 선진입 후 조건 추가 충족 시 비중 확대";
+    } else if (score >= 50) {
+      statusEl.textContent = "조건부 진입 가능";
+      if (actionEl) actionEl.textContent = "➡ 관망 우선 — 신호 1~2개 더 충족 확인 후 진입. 무리한 추격 자제";
+    } else {
+      statusEl.textContent = "진입 대기 구간";
+      if (actionEl) actionEl.textContent = "➡ 진입 자제 — 조건 미충족. 다음 기회 포착 때까지 대기";
+    }
+  }
 
   const metricsEl = document.getElementById("entryMetrics");
   if (!metricsEl) return;
