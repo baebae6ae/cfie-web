@@ -348,6 +348,105 @@ function renderJudgment(j) {
 }
 
 // ── 진입 점수 ────────────────────────────────────────────
+// ── 진입 분석 요약 (종목별 실수치 기반 자연어 생성) ──────────────────────
+function _buildAnalysisSummary(score, comp, m, setupName, setupName2) {
+  const ctx      = comp["추세문맥"]   ?? 0;
+  const structure= comp["진입구조"]   ?? 0;
+  const confirm  = comp["확인신호"]   ?? 0;
+  const space    = comp["저항여유"]   ?? 0;
+  const riskCtrl = comp["리스크관리"] ?? 0;
+
+  const gapPct = m.ema20_gap_pct ?? 0;
+  const gapAtr = m.ema20_gap_atr ?? 0;
+  const bbPos  = m.bb_pos        ?? 50;
+  const pos52  = m.range_pos     ?? 50;
+  const pbPct  = m.pullback_pct  ?? 0;
+  const bncPct = m.bounce_pct    ?? 0;
+  const rsi    = m.rsi_reset     ?? 50;
+  const adx    = m.adx           ?? 0;
+  const gapSign= gapPct >= 0 ? "+" : "";
+
+  const parts = [];
+
+  // ① 패턴 + 추세 상황
+  const trendOk = ctx >= 16;
+  if (setupName === "추세 눌림") {
+    if (trendOk && pbPct >= 4 && pbPct <= 15) {
+      parts.push(`상승 추세 중 ${pbPct.toFixed(1)}% 눌림 후 EMA20 근처(${gapSign}${gapPct.toFixed(1)}%)에서 지지 테스트 중 — 눌림목 진입 구조 확인`);
+    } else if (!trendOk) {
+      parts.push(`눌림목 형태이나 추세 환경(추세문맥 ${ctx}pt)이 약해 단순 하락일 가능성 병존`);
+    } else {
+      parts.push(`추세 눌림 구조이나 EMA20 이격(${gapSign}${gapPct.toFixed(1)}%) 또는 조정 깊이(${pbPct.toFixed(1)}%)가 기준 범위 벗어남`);
+    }
+  } else if (setupName === "압축 돌파") {
+    if (trendOk) {
+      parts.push(`BB 밴드 ${bbPos.toFixed(0)}% 위치에서 에너지 압축 후 상단 돌파 시도 중 — 거래량 동반 여부가 관건`);
+    } else {
+      parts.push(`BB 압축 돌파 패턴이나 추세 배경(추세문맥 ${ctx}pt) 부족 — 돌파 실패 시 되돌림 위험 주의`);
+    }
+  } else if (setupName === "모멘텀 지속") {
+    parts.push(`정배열 상승 추세에서 모멘텀 지속 중 — EMA20 위 ${gapPct.toFixed(1)}% 이격, ADX ${adx.toFixed(0)}으로 추세 강도 ${adx >= 22 ? "강함" : adx >= 15 ? "중간" : "약함"}`);
+  } else if (setupName === "반전 초기") {
+    parts.push(`과매도 구간(RSI ${rsi.toFixed(0)})에서 최근 저점 대비 ${bncPct.toFixed(1)}% 대반등 — 반전 초기 신호, 추세 전환 확인 단계`);
+  } else {
+    parts.push(`${setupName} 패턴 — EMA20 이격 ${gapSign}${gapPct.toFixed(1)}%, 추세문맥 ${ctx}pt`);
+  }
+
+  // ② RSI 상태
+  if (rsi >= 70) {
+    parts.push(`RSI ${rsi.toFixed(0)}으로 단기 과매수 — 급등 추격보다 눌림 재진입 대기가 유리`);
+  } else if (rsi >= 60) {
+    parts.push(`RSI ${rsi.toFixed(0)}으로 강세권 진입, 과열은 아직 아님`);
+  } else if (rsi >= 42) {
+    parts.push(`RSI ${rsi.toFixed(0)} — 과열 없이 에너지 축적 중인 건강한 구간`);
+  } else if (rsi >= 30) {
+    parts.push(`RSI ${rsi.toFixed(0)}으로 약세권 — 반등 시도는 있으나 추세 회복 확인 필요`);
+  } else {
+    parts.push(`RSI ${rsi.toFixed(0)}까지 과매도 — 기술적 반등 가능하나 추세 훼손 여부 점검 필수`);
+  }
+
+  // ③ 저항 / BB 상단 여유
+  if (bbPos <= 75 && space >= 10) {
+    parts.push(`BB 상단까지 여유(${bbPos.toFixed(0)}%), 52주 고점 ${pos52.toFixed(0)}% 위치로 추가 상승 공간 충분`);
+  } else if (bbPos > 85 || space < 4) {
+    parts.push(`BB 상단(${bbPos.toFixed(0)}%) · 52주 고점(${pos52.toFixed(0)}%)에 근접해 저항 부담 — 무리한 추격 자제`);
+  } else {
+    parts.push(`BB ${bbPos.toFixed(0)}% · 52주 ${pos52.toFixed(0)}% 위치, 저항까지 제한적 공간`);
+  }
+
+  // ④ 종합 액션
+  let action;
+  if (score >= 80) {
+    const atrNote = gapAtr > 2.5 ? `, ATR 이격(${gapAtr.toFixed(1)}) 과대한 점 감안` : "";
+    action = `→ 현재 조건 대부분 충족${atrNote}. EMA20(${gapSign}${gapPct.toFixed(1)}%) 또는 ATR×1.5 기준 손절선 확인 후 집행`;
+  } else if (score >= 65) {
+    const weak = [
+      { name: "확인신호",   v: confirm,   thr: 16 },
+      { name: "저항여유",   v: space,     thr: 10 },
+      { name: "리스크관리", v: riskCtrl,  thr: 10 },
+      { name: "진입구조",   v: structure, thr: 20 },
+    ].filter(x => x.v < x.thr).map(x => x.name).slice(0, 2);
+    const ws = weak.length ? `${weak.join("·")} 보완 필요` : "추가 확인 권장";
+    action = `→ 분할 진입 검토. ${ws}. 1차 소량 진입 후 다음 봉 확인 시 비중 추가`;
+  } else if (score >= 50) {
+    const weak = [
+      { name: "추세문맥", v: ctx,       thr: 16 },
+      { name: "진입구조", v: structure, thr: 20 },
+      { name: "확인신호", v: confirm,   thr: 12 },
+    ].filter(x => x.v < x.thr).map(x => x.name).slice(0, 2);
+    action = `→ ${weak.join("·")} 조건 미충족. 한 봉 이상 더 지켜본 후 진입 여부 결정`;
+  } else {
+    const worst = [
+      { name: "추세문맥", v: ctx },
+      { name: "진입구조", v: structure },
+      { name: "확인신호", v: confirm },
+    ].sort((a, b) => a.v - b.v)[0];
+    action = `→ ${worst.name}(${worst.v}pt) 등 핵심 조건 미달. 관망 후 조건 갖춰질 때 재평가`;
+  }
+
+  return parts.join(". ") + ". " + action;
+}
+
 function renderEntryScore(entry) {
   const score      = entry?.score ?? 0;
   const comp       = entry?.components || {};
@@ -369,19 +468,13 @@ function renderEntryScore(entry) {
   const statusEl = document.getElementById("entryStatus");
   const actionEl = document.getElementById("entryAction");
   if (statusEl) {
-    if (score >= 80) {
-      statusEl.textContent = "최적 진입 구간";
-      if (actionEl) actionEl.textContent = "➡ 적극 진입 고려 — 추세·구조·신호 모두 우호적. 손절선 설정 후 비중 집행";
-    } else if (score >= 65) {
-      statusEl.textContent = "양호한 진입 구간";
-      if (actionEl) actionEl.textContent = "➡ 분할 진입 가능 — 소량 선진입 후 조건 추가 충족 시 비중 확대";
-    } else if (score >= 50) {
-      statusEl.textContent = "조건부 진입 가능";
-      if (actionEl) actionEl.textContent = "➡ 관망 우선 — 신호 1~2개 더 충족 확인 후 진입. 무리한 추격 자제";
-    } else {
-      statusEl.textContent = "진입 대기 구간";
-      if (actionEl) actionEl.textContent = "➡ 진입 자제 — 조건 미충족. 다음 기회 포착 때까지 대기";
-    }
+    statusEl.textContent =
+      score >= 80 ? "최적 진입 구간" :
+      score >= 65 ? "양호한 진입 구간" :
+      score >= 50 ? "조건부 진입 가능" : "진입 대기 구간";
+  }
+  if (actionEl) {
+    actionEl.textContent = _buildAnalysisSummary(score, comp, m, setupName, setupName2);
   }
 
   const metricsEl = document.getElementById("entryMetrics");
