@@ -131,17 +131,30 @@
           </div>
           <div class="stop-loss-result">
             <div class="sl-item sl-ts-item">
-              <span class="sl-key">트레일링 손절</span>
+              <span class="sl-key">① Chandelier 손절</span>
               <span class="sl-val" id="slPrice">—</span>
               <span class="sl-pct" id="slPct"></span>
+            </div>
+            <div class="sl-item">
+              <span class="sl-key">② 스윙 저점</span>
+              <span class="sl-val" id="slSwingLow">—</span>
+              <span class="sl-pct" id="slSwingLowPct"></span>
             </div>
             <div class="sl-item">
               <span class="sl-key">EMA20</span>
               <span class="sl-val" id="slEMA20">—</span>
               <span class="sl-sig" id="slEMASignal"></span>
             </div>
-            <div class="sl-desc">최근 20봉 고점 − ATR(14)×2 기준</div>
+            <div class="sl-desc">① 22봉 고점−ATR×3 (Chandelier 표준) &nbsp;② 5봉 저점−ATR×0.5</div>
           </div>
+        </div>
+      </div>
+
+      <!-- 진입점수 백테스트 -->
+      <div class="sidebar-box">
+        <div class="sbox-header">🔬 진입점수 백테스트</div>
+        <div id="backtestResult" class="bt-wrap">
+          <div class="bt-empty">차트 로드 후 자동 계산됩니다</div>
         </div>
       </div>
 

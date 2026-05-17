@@ -956,3 +956,27 @@
 .sl-sig    { font-size:12px; }
 .sl-ts-item .sl-val { color:var(--bear,#e53935); }
 .sl-desc   { font-size:10.5px; color:var(--text3,#aaa); margin-top:2px; }
+
+/* ── Backtest Result ─────────────────────────── */
+.bt-wrap  { padding: 10px 16px 14px; }
+.bt-empty { font-size: 11px; color: var(--text3); padding: 4px 0; }
+.bt-note  { font-size: 10px; color: var(--text3); margin-bottom: 8px; }
+.bt-row   { display: grid; grid-template-columns: 52px 36px 1fr 34px; align-items: center; gap: 6px; margin-bottom: 5px; }
+.bt-total { border-top: 1px solid var(--border2); padding-top: 6px; margin-top: 6px; }
+.bt-label { font-size: 11px; font-weight: 700; color: var(--text1); }
+.bt-count { font-size: 10px; color: var(--text3); text-align: right; }
+.bt-na    { font-size: 10px; color: var(--text3); }
+.bt-bar-wrap {
+  position: relative; height: 8px;
+  background: var(--neutral-100); border: 1px solid var(--border2);
+}
+.bt-bar { height: 100%; transition: width 0.4s ease; }
+.bt-50line {
+  position: absolute; top: 0; left: 50%; width: 1px;
+  height: 100%; background: rgba(0,0,0,0.3);
+}
+.bt-pct { font-size: 11px; font-weight: 800; text-align: right; }
+.bt-diag { font-size: 11px; line-height: 1.5; margin-top: 8px; padding: 6px 8px; }
+.bt-ok      { background: rgba(46,160,67,0.08); color: #1a7a34; border-left: 2px solid #2ea043; }
+.bt-neutral { background: rgba(210,153,34,0.08); color: #a67c00; border-left: 2px solid #d29922; }
+.bt-warn    { background: rgba(229,57,53,0.08);  color: #c62828; border-left: 2px solid #e53935; }

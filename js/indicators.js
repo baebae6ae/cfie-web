@@ -443,6 +443,9 @@ function calcEntryScore(enriched) {
   const histFalling= hNow<hPrev  && hPrev<hPrev2;
   const cloudTop   = Math.max(_fnum(row.ICH_SENKOU_A,NaN), _fnum(row.ICH_SENKOU_B,NaN));
   const cloudOk    = !isNaN(cloudTop) && close>=cloudTop;
+  // EMA20 기울기: 5봉 전 EMA20 대비 현재 EMA20이 상승 중이면 추세 지속력 확인
+  const ema20_5   = n>=6 ? _fnum(enriched[n-6].EMA20, ema20) : ema20;
+  const ema20Rising = ema20 > ema20_5 * 1.001;
 
   // ① 추세 문맥 (0~30)
   let ctx = 0;
@@ -505,7 +508,10 @@ function calcEntryScore(enriched) {
   if (close>=ema20) trigger+=4;
   if (close>=kijun) trigger+=4;
   if (cp>=0.62) trigger+=4; else if (cp<=0.35) trigger-=4;
-  if (histRising) trigger+=5; else if (histFalling) trigger-=3;
+  // MACD 히스토그램: 양수이면서 상승이면 최고 신호, 음수지만 상승이면 보조 신호
+  if (histRising && hNow > 0) trigger+=5; else if (histRising) trigger+=2; else if (histFalling) trigger-=3;
+  // EMA20 기울기 확인: 추세선 자체가 상승 중이면 가산
+  if (ema20Rising && close >= ema20) trigger+=2;
   if (rvol>=1.4&&close>=open_p) trigger+=4; else if (rvol<0.75&&setupName!=="추세 눌림") trigger-=2;
   trigger = _clip(trigger, -6, 24);
 

@@ -240,6 +240,16 @@ async function _check52h(ticker, name) {
   try {
     const { bars } = await fetchOHLCV(ticker, "2y", "1d");
     if (!bars || bars.length < 30) return null;
+
+    // ── 거래중지 종목 제외 ──
+    // 최근 5봉 거래량이 모두 0이면 거래중지로 판단
+    const recentVol = bars.slice(-5).reduce((s, b) => s + (b.volume || 0), 0);
+    if (recentVol === 0) return null;
+    // 최근 3봉 종가가 모두 동일하고 거래량이 0이면 상장폐지/거래정지
+    const last3 = bars.slice(-3);
+    if (last3.every(b => b.close === last3[0].close) && last3.every(b => (b.volume || 0) === 0)) return null;
+    // 당일 거래량 0 또는 이상값 제외
+    if ((bars[bars.length - 1].volume || 0) === 0) return null;
     // 주봉 리샘플
     const weekly = _toWeekly(bars);
     if (weekly.length < 10) return null;
