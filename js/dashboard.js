@@ -1,4 +1,4 @@
-﻿/* js/dashboard.js */
+/* js/dashboard.js */
 
 // ── 지수 목록 ─────────────────────────────────────────
 const KR_INDICES = [

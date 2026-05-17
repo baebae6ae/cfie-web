@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -17,14 +17,14 @@
     <span class="ver">v4.0</span>
   </div>
   <nav class="topbar-nav">
-    <a href="index.html"  class="nav-link" data-page="index.html">??쒕낫??/a>
-    <a href="scan.html"   class="nav-link" data-page="scan.html">?좉퇋 吏꾩엯 醫낅ぉ 李얘린</a>
+    <a href="index.html"  class="nav-link" data-page="index.html">대시보드</a>
+    <a href="scan.html"   class="nav-link" data-page="scan.html">신규 진입 종목 찾기</a>
   </nav>
   <div class="topbar-search">
     <form class="search-form" onsubmit="return false;">
       <input type="text" id="searchInput" class="search-input"
-             placeholder="醫낅ぉ紐??먮뒗 ?곗빱 寃?됤? autocomplete="off">
-      <button type="button" class="search-btn" onclick="doSearch()">??/button>
+             placeholder="종목명 또는 티커 검색…" autocomplete="off">
+      <button type="button" class="search-btn" onclick="doSearch()">⌕</button>
     </form>
     <div id="searchDropdown" class="search-dropdown hidden"></div>
   </div>
@@ -33,21 +33,21 @@
   </div>
 </header>
 
-<!-- ?쒖옣 ?곗빱 ?ㅽ듃由?-->
+<!-- 시장 티커 스트립 -->
 <div class="ticker-strip">
   <div class="ticker-track" id="tickerTrack">
-    <div class="ticker-item"><span class="ti-name">?쒖옣 ?곗씠??濡쒕뵫 以묅?/span></div>
+    <div class="ticker-item"><span class="ti-name">시장 데이터 로딩 중…</span></div>
   </div>
 </div>
 
 <main class="main-content">
 
-  <!-- ?쒓뎅 ?쒖옣 -->
+  <!-- 한국 시장 -->
   <section class="market-section">
     <div class="ms-head">
       <div class="ms-flag-title">
-        <span class="ms-flag">?눖?눟</span>
-        <span class="ms-title">?쒓뎅 ?쒖옣</span>
+        <span class="ms-flag">🇰🇷</span>
+        <span class="ms-title">한국 시장</span>
       </div>
       <span class="ms-updated" id="krUpdated"></span>
     </div>
@@ -61,22 +61,22 @@
       </div>
       <div class="ms-map-col">
         <div class="ms-map-head">
-          <span class="ms-map-label">?쒖옣 ?덊듃留?/span>
-          <button class="ms-map-btn" onclick="loadMarketMap('KR')">??/button>
+          <span class="ms-map-label">시장 히트맵</span>
+          <button class="ms-map-btn" onclick="loadMarketMap('KR')">↺</button>
         </div>
         <div class="ms-map-body" id="krMapBody">
-          <div class="map-loading">?덊듃留?濡쒕뵫 以묅?/div>
+          <div class="map-loading">히트맵 로딩 중…</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 誘멸뎅 ?쒖옣 -->
+  <!-- 미국 시장 -->
   <section class="market-section">
     <div class="ms-head">
       <div class="ms-flag-title">
-        <span class="ms-flag">?눣?눡</span>
-        <span class="ms-title">誘멸뎅 ?쒖옣</span>
+        <span class="ms-flag">🇺🇸</span>
+        <span class="ms-title">미국 시장</span>
       </div>
       <span class="ms-updated" id="usUpdated"></span>
     </div>
@@ -93,22 +93,22 @@
       </div>
       <div class="ms-map-col">
         <div class="ms-map-head">
-          <span class="ms-map-label">?쒖옣 ?덊듃留?/span>
-          <button class="ms-map-btn" onclick="loadMarketMap('US')">??/button>
+          <span class="ms-map-label">시장 히트맵</span>
+          <button class="ms-map-btn" onclick="loadMarketMap('US')">↺</button>
         </div>
         <div class="ms-map-body" id="usMapBody">
-          <div class="map-loading">?덊듃留?濡쒕뵫 以묅?/div>
+          <div class="map-loading">히트맵 로딩 중…</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 52二??좉퀬媛 -->
+  <!-- 52주 신고가 -->
   <section class="section">
     <div class="section-header">
       <div class="section-accent"></div>
-      <span class="section-title">?룘 52二??좉퀬媛</span>
-      <span class="section-sub">?꾩옱 52二?理쒓퀬媛??洹쇱젒??醫낅ぉ怨??곗냽 二쇱닔</span>
+      <span class="section-title">🏔 52주 신고가</span>
+      <span class="section-sub">현재 52주 최고가에 근접한 종목과 연속 주수</span>
     </div>
     <div class="high52-tabs">
       <button class="h52-tab active" onclick="load52h('kospi',this)">KOSPI</button>
@@ -116,17 +116,17 @@
       <button class="h52-tab" onclick="load52h('us',this)">US</button>
     </div>
     <div id="high52Grid" class="high52-grid">
-      <div class="high52-loading">?곗씠??濡쒕뵫 以묅?/div>
+      <div class="high52-loading">데이터 로딩 중…</div>
     </div>
     <div id="high52MoreWrap" class="more-wrap" style="display:none">
-      <button id="high52MoreBtn" class="more-btn" onclick="loadMore52h()">?먯꽭??蹂닿린</button>
+      <button id="high52MoreBtn" class="more-btn" onclick="loadMore52h()">자세히 보기</button>
     </div>
   </section>
 
 </main>
 
 <footer class="footer">
-  蹂??쒕퉬?ㅻ뒗 李멸퀬???뺣낫?대ŉ ?ъ옄 沅뚯쑀媛 ?꾨떃?덈떎. ?ъ옄 寃곌낵?????梨낆엫? ?ъ옄??蹂몄씤?먭쾶 ?덉뒿?덈떎.
+  본 서비스는 참고용 정보이며 투자 권유가 아닙니다. 투자 결과에 대한 책임은 투자자 본인에게 있습니다.
 </footer>
 
 
@@ -137,8 +137,8 @@
   <script src="js/common.js"></script>
 <script src="js/dashboard.js"></script>
 <nav class="mobile-nav">
-  <a href="index.html"  class="mn-item"><span class="mn-icon">?뱤</span>??쒕낫??/a>
-  <a href="scan.html"   class="mn-item"><span class="mn-icon">?뵇</span>醫낅ぉ ?먯깋</a>
+  <a href="index.html"  class="mn-item"><span class="mn-icon">📊</span>대시보드</a>
+  <a href="scan.html"   class="mn-item"><span class="mn-icon">🔍</span>종목 탐색</a>
 </nav>
 </body>
 </html>
