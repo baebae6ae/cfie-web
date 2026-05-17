@@ -942,3 +942,56 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── 52주 신고가 카드: 점수 뱃지 + 백테스트 패널 ──────────────── */
+.h52-score-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+  border: 1px solid; white-space: nowrap;
+}
+.h52-top-right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+.h52-name-wrap { flex: 1; min-width: 0; }
+.h52-actions {
+  display: flex; gap: 6px; margin-top: 8px;
+}
+.h52-btn-analyze, .h52-btn-bt {
+  flex: 1; padding: 5px 0; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border2); border-radius: 6px;
+  background: var(--bg2); color: var(--text2); cursor: pointer;
+  transition: background 0.15s;
+}
+.h52-btn-analyze:hover { background: var(--bg3); }
+.h52-btn-bt:hover      { background: var(--bg3); }
+.h52-btn-bt:disabled   { opacity: 0.5; cursor: default; }
+
+/* ─── 미니 백테스트 패널 ─────────────────────────────────────── */
+.h52-bt-panel {
+  margin-top: 8px; padding: 8px; border-top: 1px solid var(--border2);
+}
+.h52-bt-hd, .h52-bt-row {
+  display: grid;
+  grid-template-columns: 46px 26px repeat(3, 1fr);
+  gap: 3px; align-items: center;
+  font-size: 10.5px; padding: 2px 0;
+}
+.h52-bt-hd {
+  color: var(--text3); font-weight: 600;
+  border-bottom: 1px solid var(--border2); margin-bottom: 3px;
+}
+.h52-bt-row { border-bottom: 1px solid var(--border2); }
+.h52-bt-row:last-of-type { border-bottom: none; }
+.h52-bt-na  { color: var(--text3); }
+.h52-bt-diag {
+  font-size: 10px; margin-top: 5px; padding: 4px 6px;
+  border-radius: 5px; line-height: 1.4;
+}
+.h52-bt-diag.bt-ok   { background: #2ea04320; color: #2ea043; }
+.h52-bt-diag.bt-warn { background: #e5393520; color: #e53935; }
+.h52-bt-note {
+  font-size: 9.5px; color: var(--text3); margin-top: 4px;
+}
+.h52-bt-loading, .h52-bt-empty {
+  font-size: 11px; color: var(--text3); padding: 6px 0; text-align: center;
+}

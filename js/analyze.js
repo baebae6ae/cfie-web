@@ -778,8 +778,8 @@ function runBacktest(fisBars) {
   if (n < MIN_LOOKBACK + 6) return null;
 
   const PERIODS = [1, 3, 5];
-  const keys = ["90+", "80-90", "65-80", "50-65"];
-  const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922"};
+  const keys = ["90+", "80-90", "65-80", "50-65", "50미만"];
+  const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922","50미만":"#888"};
   const buckets = {};
   for (const k of keys) {
     buckets[k] = { color: COLORS[k], counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
@@ -788,11 +788,11 @@ function runBacktest(fisBars) {
   for (let i = MIN_LOOKBACK; i < n - 5; i++) {
     const slice = fisBars.slice(0, i + 1);
     const score = calcEntryScore(slice).score;
-    if (score < 50) continue;
+    if (score < 0) continue;  // 음수 제외 (100점 클램프 범위 밖)
     const curClose = fisBars[i].close;
     if (!curClose || curClose <= 0) continue;
 
-    const key = score >= 90 ? "90+" : score >= 80 ? "80-90" : score >= 65 ? "65-80" : "50-65";
+    const key = score >= 90 ? "90+" : score >= 80 ? "80-90" : score >= 65 ? "65-80" : score >= 50 ? "50-65" : "50미만";
 
     for (const p of PERIODS) {
       if (i + p >= n) continue;
@@ -823,11 +823,11 @@ function renderBacktest(fisBars) {
     const buckets = runBacktest(fisBars);
     if (!buckets) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 86봉 필요)</div>"; return; }
 
-    const keys = ["90+", "80-90", "65-80", "50-65"];
+    const keys = ["90+", "80-90", "65-80", "50-65", "50미만"];
 
     // ── 헤더 ──
     let html = `
-      <div class="bt-note">현재 종목 과거 데이터 기준 (50점 이상 구간) | MFE = 5봉 내 +2% 도달률 (스윙 첫 익절 기준)</div>
+      <div class="bt-note">현재 종목 과거 데이터 기준 (50미만 포함 전 구간) | MFE = 5봉 내 +2% 도달률 (스윙 첫 익절 기준)</div>
       <div class="bt-grid-hd">
         <span>구간</span><span>N</span><span>+1봉</span><span>+3봉</span><span>+5봉</span><span>MFE</span>
       </div>`;
@@ -882,7 +882,7 @@ function renderBacktest(fisBars) {
 
     // ── 범례 안내 ──
     // ── 지표 유효성 진단: 점수↑ → MFE↑ 여부 ──
-    const keys2 = ["90+", "80-90", "65-80", "50-65"];
+    const keys2 = ["90+", "80-90", "65-80", "50-65", "50미만"];
     const mfeVals = keys2.map(k => buckets[k].counts.mfe ? buckets[k].wins.mfe / buckets[k].counts.mfe * 100 : null);
     // 데이터 있는 구간만 추출해 단조감소 체크
     const validMfe = mfeVals.filter(v => v !== null);
