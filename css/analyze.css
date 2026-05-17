@@ -980,3 +980,31 @@
 .bt-ok      { background: rgba(46,160,67,0.08); color: #1a7a34; border-left: 2px solid #2ea043; }
 .bt-neutral { background: rgba(210,153,34,0.08); color: #a67c00; border-left: 2px solid #d29922; }
 .bt-warn    { background: rgba(229,57,53,0.08);  color: #c62828; border-left: 2px solid #e53935; }
+
+/* ─── 백테스트 그리드 테이블 ─────────────────────────────────── */
+.bt-grid-hd, .bt-grid-row {
+  display: grid;
+  grid-template-columns: 48px 30px repeat(4, 1fr);
+  gap: 4px;
+  align-items: center;
+  font-size: 11px;
+  padding: 3px 0;
+}
+.bt-grid-hd {
+  color: var(--text3);
+  border-bottom: 1px solid var(--border2);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.bt-grid-row {
+  border-bottom: 1px solid var(--border2);
+}
+.bt-grid-row:last-of-type {
+  border-bottom: none;
+}
+.bt-note {
+  font-size: 10px;
+  color: var(--text3);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}

@@ -771,37 +771,44 @@ function renderTable(fisBars) {
 
 // ── 진입 점수 백테스트 (현재 종목 기준) ─────────────────────────────────
 function runBacktest(fisBars) {
-  // 지표 계산이 안정화되는 최소 bar 수 (EMA60 + 여유)
+  // 다중 기간 백테스트: +1봉, +3봉, +5봉 종가 상승률 + MFE(5봉내 +1% 도달률)
+  // 진입점수는 1봉 예측이 아닌 스윙 세팅 품질 지표 → 5봉 기준이 의미 있음
   const MIN_LOOKBACK = 80;
   const n = fisBars.length;
-  if (n < MIN_LOOKBACK + 2) return null;
+  if (n < MIN_LOOKBACK + 6) return null;
 
-  const buckets = {
-    "50미만":  { wins: 0, total: 0, label: "50미만",  color: "#999" },
-    "50-65":   { wins: 0, total: 0, label: "50-65",   color: "#d29922" },
-    "65-80":   { wins: 0, total: 0, label: "65-80",   color: "#56a0d3" },
-    "80-90":   { wins: 0, total: 0, label: "80-90",   color: "#2ea043" },
-    "90+":     { wins: 0, total: 0, label: "90+",     color: "#1a7a34" },
-  };
+  const PERIODS = [1, 3, 5];
+  const keys = ["90+", "80-90", "65-80", "50-65"];
+  const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922"};
+  const buckets = {};
+  for (const k of keys) {
+    buckets[k] = { color: COLORS[k], counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
+  }
 
-  for (let i = MIN_LOOKBACK; i < n - 1; i++) {
+  for (let i = MIN_LOOKBACK; i < n - 5; i++) {
     const slice = fisBars.slice(0, i + 1);
-    const entry = calcEntryScore(slice);
-    const score = entry.score;
-    const nextClose = fisBars[i + 1].close;
-    const curClose  = fisBars[i].close;
-    if (!nextClose || !curClose) continue;
-    const isWin = nextClose > curClose;
+    const score = calcEntryScore(slice).score;
+    if (score < 50) continue;
+    const curClose = fisBars[i].close;
+    if (!curClose || curClose <= 0) continue;
 
-    let bucket;
-    if      (score >= 90) bucket = "90+";
-    else if (score >= 80) bucket = "80-90";
-    else if (score >= 65) bucket = "65-80";
-    else if (score >= 50) bucket = "50-65";
-    else                  bucket = "50미만";
+    const key = score >= 90 ? "90+" : score >= 80 ? "80-90" : score >= 65 ? "65-80" : "50-65";
 
-    buckets[bucket].total++;
-    if (isWin) buckets[bucket].wins++;
+    for (const p of PERIODS) {
+      if (i + p >= n) continue;
+      const fwdClose = fisBars[i + p]?.close;
+      if (!fwdClose) continue;
+      buckets[key].counts[p]++;
+      if (fwdClose > curClose) buckets[key].wins[p]++;
+    }
+    // MFE: 5봉 내 현재가 대비 +1% 이상 고점 도달 여부 (수익 기회율)
+    const endIdx = Math.min(i + 5, n - 1);
+    let hadMFE = false;
+    for (let j = i + 1; j <= endIdx; j++) {
+      if ((fisBars[j]?.high || 0) > curClose * 1.01) { hadMFE = true; break; }
+    }
+    buckets[key].counts.mfe++;
+    if (hadMFE) buckets[key].wins.mfe++;
   }
   return buckets;
 }
@@ -809,59 +816,78 @@ function runBacktest(fisBars) {
 function renderBacktest(fisBars) {
   const el = document.getElementById("backtestResult");
   if (!el) return;
-  const buckets = runBacktest(fisBars);
-  if (!buckets) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 82봉 필요)</div>"; return; }
+  el.innerHTML = "<div class='bt-empty'>백테스트 계산 중…</div>";
 
-  const rows = ["50+", "50-65", "65-80", "80-90", "90+"].reverse().map(key => {
-    // "50+" 는 50미만 제외 전체
-    if (key === "50+") {
-      const total = Object.values(buckets).reduce((s, b) => s + b.total, 0);
-      const wins  = Object.values(buckets).reduce((s, b) => s + b.wins, 0);
-      if (total === 0) return "";
-      const pct = wins / total * 100;
-      const col = pct >= 55 ? "#2ea043" : pct >= 45 ? "#d29922" : "#e53935";
-      return `<div class="bt-row bt-total">
-        <span class="bt-label">전체 평균</span>
-        <span class="bt-count">${total}봉</span>
-        <div class="bt-bar-wrap">
-          <div class="bt-bar" style="width:${Math.min(pct,100).toFixed(0)}%;background:${col}"></div>
-          <div class="bt-50line"></div>
-        </div>
-        <span class="bt-pct" style="color:${col}">${pct.toFixed(0)}%</span>
+  // 비동기 실행 — UI 블로킹 방지
+  setTimeout(() => {
+    const buckets = runBacktest(fisBars);
+    if (!buckets) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 86봉 필요)</div>"; return; }
+
+    const keys = ["90+", "80-90", "65-80", "50-65"];
+
+    // ── 헤더 ──
+    let html = `
+      <div class="bt-note">현재 종목 과거 데이터 기준 (50점 이상 구간) | MFE = 5봉 내 +1% 도달률</div>
+      <div class="bt-grid-hd">
+        <span>구간</span><span>N</span><span>+1봉</span><span>+3봉</span><span>+5봉</span><span>MFE</span>
+      </div>`;
+
+    const pctSpan = (wins, total, col) => {
+      if (!total) return `<span class="bt-na">—</span>`;
+      const v = wins / total * 100;
+      const c = v >= 55 ? "#2ea043" : v >= 45 ? "#d29922" : "#e53935";
+      return `<span style="color:${c};font-weight:800">${v.toFixed(0)}%</span>`;
+    };
+
+    for (const k of keys) {
+      const b = buckets[k];
+      const n1 = b.counts[1];
+      if (!n1) {
+        html += `<div class="bt-grid-row">
+          <span style="color:${b.color};font-weight:700">${k}</span>
+          <span class="bt-na">0</span>
+          <span class="bt-na">—</span><span class="bt-na">—</span><span class="bt-na">—</span><span class="bt-na">—</span>
+        </div>`;
+        continue;
+      }
+      const mfeV = b.counts.mfe ? b.wins.mfe / b.counts.mfe * 100 : 0;
+      const mfeC = mfeV >= 65 ? "#2ea043" : mfeV >= 50 ? "#d29922" : "#e53935";
+      html += `<div class="bt-grid-row">
+        <span style="color:${b.color};font-weight:700">${k}</span>
+        <span class="bt-count">${n1}</span>
+        ${pctSpan(b.wins[1], b.counts[1])}
+        ${pctSpan(b.wins[3], b.counts[3])}
+        ${pctSpan(b.wins[5], b.counts[5])}
+        <span style="color:${mfeC};font-weight:800">${mfeV.toFixed(0)}%</span>
       </div>`;
     }
-    const b = buckets[key];
-    if (!b || b.total === 0) return `<div class="bt-row"><span class="bt-label">${key}</span><span class="bt-count bt-na">데이터 없음</span></div>`;
-    const pct = b.wins / b.total * 100;
-    const col = pct >= 55 ? "#2ea043" : pct >= 45 ? "#d29922" : "#e53935";
-    return `<div class="bt-row">
-      <span class="bt-label" style="color:${b.color}">${b.label}</span>
-      <span class="bt-count">${b.total}봉</span>
-      <div class="bt-bar-wrap">
-        <div class="bt-bar" style="width:${Math.min(pct,100).toFixed(0)}%;background:${col}"></div>
-        <div class="bt-50line"></div>
-      </div>
-      <span class="bt-pct" style="color:${col}">${pct.toFixed(0)}%</span>
-    </div>`;
-  }).join("");
 
-  // 90+ 구간 진단
-  const b90 = buckets["90+"];
-  let diag = "";
-  if (b90.total === 0) {
-    diag = `<div class="bt-diag bt-warn">이 종목 데이터에서 90점 이상 신호가 없었습니다.</div>`;
-  } else {
-    const pct90 = b90.wins / b90.total * 100;
-    if (pct90 >= 60) {
-      diag = `<div class="bt-diag bt-ok">✓ 90+ 구간: ${pct90.toFixed(0)}% 다음봉 상승 (${b90.total}회). 신호 신뢰도 양호.</div>`;
-    } else if (pct90 >= 50) {
-      diag = `<div class="bt-diag bt-neutral">△ 90+ 구간: ${pct90.toFixed(0)}% 상승 (${b90.total}회). 신호 후 확인봉 대기 권장.</div>`;
+    // ── 90+ 구간 진단 ──
+    const b90 = buckets["90+"];
+    const t1 = b90.counts[1], t5 = b90.counts[5], tm = b90.counts.mfe;
+    const p1  = t1 ? b90.wins[1] / t1 * 100 : 0;
+    const p5  = t5 ? b90.wins[5] / t5 * 100 : 0;
+    const mfe = tm ? b90.wins.mfe / tm * 100 : 0;
+    let diag = "";
+    if (!t1) {
+      diag = `<div class="bt-diag bt-warn">90점 이상 신호가 이 종목에서 없었습니다.</div>`;
+    } else if (p5 >= 58 || mfe >= 65) {
+      diag = `<div class="bt-diag bt-ok">✓ 90+: +5봉 ${p5.toFixed(0)}% · MFE ${mfe.toFixed(0)}%. 1봉 노이즈는 있어도 5봉 내 수익 기회 양호.</div>`;
+    } else if (p5 >= 48 || mfe >= 55) {
+      diag = `<div class="bt-diag bt-neutral">△ 90+: +5봉 ${p5.toFixed(0)}% · MFE ${mfe.toFixed(0)}%. 확인봉 대기 후 진입, 손절선 엄격 준수.</div>`;
     } else {
-      diag = `<div class="bt-diag bt-warn">⚠ 90+ 구간: ${pct90.toFixed(0)}% 상승 (${b90.total}회). 이 종목은 고점수 이후에도 다음날 하락이 잦음 → 분할매수·손절 강화 필요.</div>`;
+      diag = `<div class="bt-diag bt-warn">⚠ 90+: +1봉 ${p1.toFixed(0)}% · +5봉 ${p5.toFixed(0)}% · MFE ${mfe.toFixed(0)}%. 이 종목은 세팅 후 추가 하락 경향 → 다음봉 확인 후 분할 진입 권장.</div>`;
     }
-  }
+    html += diag;
 
-  el.innerHTML = `<div class="bt-note">현재 종목 과거 데이터 기준 (다음봉 종가 상승률)</div>${rows}${diag}`;
+    // ── 범례 안내 ──
+    html += `<div class="bt-legend">
+      진입점수는 <b>1봉 상승 예측</b>이 아닌 <b>스윙 세팅 품질(5봉 기준)</b> 지표입니다.
+      MFE가 높으면 +1봉에 눌리더라도 수익 실현 기회가 있었음을 뜻합니다.
+    </div>`;
+
+    el.innerHTML = html;
+  }, 10);
 }
 
 function fmt(v, dec=0) {

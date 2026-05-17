@@ -446,6 +446,10 @@ function calcEntryScore(enriched) {
   // EMA20 기울기: 5봉 전 EMA20 대비 현재 EMA20이 상승 중이면 추세 지속력 확인
   const ema20_5   = n>=6 ? _fnum(enriched[n-6].EMA20, ema20) : ema20;
   const ema20Rising = ema20 > ema20_5 * 1.001;
+  // 전일 고점 돌파 확인: '세팅 준비됨'을 넘어 '실제 모멘텀 시작' 여부
+  const prevClose2 = n>=2 ? _fnum(enriched[n-2].close, close) : close;
+  const prevHigh2  = n>=2 ? _fnum(enriched[n-2].high,  close) : close;
+  const breakingPrevHigh = close > prevHigh2 && close > prevClose2;
 
   // ① 추세 문맥 (0~30)
   let ctx = 0;
@@ -502,19 +506,22 @@ function calcEntryScore(enriched) {
   else if (secondary>=14) consensus=(secondary-10)*0.12;
   const setupQuality = _clip(primary+consensus, 0, 30);
 
-  // ③ 확인 신호 (-6~24)
+  // ③ 확인 신호 (-6~28): '세팅 준비됨'이 아닌 '실제 모멘텀 시작 확인'에 가중치 강화
   let trigger = 0;
   if (close>=ema10) trigger+=5;
   if (close>=ema20) trigger+=4;
   if (close>=kijun) trigger+=4;
   if (cp>=0.62) trigger+=4; else if (cp<=0.35) trigger-=4;
+  // 전일 고점 돌파: 실제 매수세 확인 — 진입 확인 신호 중 가장 강력
+  if (breakingPrevHigh && rvol>=1.1) trigger+=6;
+  else if (breakingPrevHigh)         trigger+=4;
+  else if (close > prevClose2)       trigger+=1;
   // MACD 히스토그램: 양수이면서 상승이면 최고 신호, 음수지만 상승이면 보조 신호
   if (histRising && hNow > 0) trigger+=5; else if (histRising) trigger+=2; else if (histFalling) trigger-=3;
   // EMA20 기울기 확인: 추세선 자체가 상승 중이면 가산
   if (ema20Rising && close >= ema20) trigger+=2;
-  if (rvol>=1.4&&close>=open_p) trigger+=4; else if (rvol<0.75&&setupName!=="추세 눌림") trigger-=2;
-  trigger = _clip(trigger, -6, 24);
-
+  if (rvol>=1.4&&close>=open_p) trigger+=4; else if (rvol<0.75) trigger-=2;
+  trigger = _clip(trigger, -6, 28);
   // ④ 저항 여유 (-6~18)
   let space = 0;
   if (rp>=0.55&&rp<=0.9) space+=9; else if (rp>0.9&&rp<=0.96) space+=4;
@@ -532,7 +539,7 @@ function calcEntryScore(enriched) {
 
   // 합산 → 정규화 /1.18
   const rawTotal = ctx + setupQuality + trigger + space + riskCtrl;
-  const total    = _clip(Math.round(rawTotal/1.18), 0, 100);
+  const total    = _clip(Math.round(rawTotal/1.22), 0, 100);  // max raw ~122 (trigger 28+)
   let label;
   if (total>=80) label="최적 진입 구간";
   else if (total>=65) label="양호한 진입 구간";
