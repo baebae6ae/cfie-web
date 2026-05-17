@@ -11,7 +11,7 @@ let _results     = [];
 // 필터 기준 및 설정
 const FIS_FILTER = { fis: 30, entry: 55, risk: -16, trend: 0 };
 const KUMO_BELOW_MIN    = 10;
-const KUMO_BRK_LOOKBACK = 36;
+const KUMO_BRK_LOOKBACK = 18;
 const KUMO_TWIST_RANGE  = 8;
 const KUMO_VOL_MULT     = 1.8;
 const KUMO_BODY_RATIO   = 0.25;
@@ -27,15 +27,15 @@ function selectScanType(type) {
     t.classList.toggle("active", t.dataset.type === type));
   const kd = document.getElementById("kumoDesc");
   if (kd) kd.style.display = type === "kumo" ? "block" : "none";
-  // 스캔 중이 아닐 때만 결과 섹션을 가림
-  if (!_scanning) document.getElementById("resultsSection").style.display = "none";
+  // 스캔 중이 아닐 때: 해당 탭의 캐시된 결과 복원 (없으면 숨김)
+  if (!_scanning) _restoreScanCache();
 }
 
 function selectMarket(market) {
   _market = market;
   document.querySelectorAll(".mtab").forEach(t =>
     t.classList.toggle("active", t.dataset.market === market));
-  if (!_scanning) document.getElementById("resultsSection").style.display = "none";
+  if (!_scanning) _restoreScanCache();
 }
 
 // ── 스캔 로직 (전체 종목 순회 및 비차단 상호작용) ──────────────
@@ -126,6 +126,14 @@ async function doScan() {
       resultLabel.textContent = _scanType === "kumo"
         ? `${label} 전체 분석 완료 (체류기간 순)`
         : `${label} 전체 분석 완료 (점수 순)`;
+    }
+    // 스캔 결과 sessionStorage에 저장 (페이지 이동 후 복귀 시 유지)
+    if (!_stopScan && _results.length > 0) {
+      try {
+        sessionStorage.setItem("cfie_scan_cache", JSON.stringify({
+          type: _scanType, market: _market, results: _results
+        }));
+      } catch(e) { /* 용량 초과 등 무시 */ }
     }
 
   } catch(e) {
@@ -688,3 +696,45 @@ function _showScanBt(ticker, idx) {
     btn.textContent = "📊 접기"; btn.disabled = false;
   }, 20);
 }
+
+// ── sessionStorage 결과 복원 ────────────────────────────────────
+function _restoreScanCache() {
+  const rs       = document.getElementById("resultsSection");
+  const grid     = document.getElementById("candidatesGrid");
+  const countEl  = document.getElementById("resultCount");
+  const labelEl  = document.getElementById("resultLabel");
+  try {
+    const raw = sessionStorage.getItem("cfie_scan_cache");
+    if (!raw) { if (rs) rs.style.display = "none"; return; }
+    const cache = JSON.parse(raw);
+    // 현재 선택된 탭/마켓과 다른 캐시면 숨김
+    if (cache.type !== _scanType || cache.market !== _market) {
+      if (rs) rs.style.display = "none"; return;
+    }
+    _results = cache.results || [];
+    if (_results.length === 0) { if (rs) rs.style.display = "none"; return; }
+    if (rs)      rs.style.display     = "block";
+    if (countEl) countEl.textContent  = `${_results.length}개 발견`;
+    const label = { kospi: "코스피", kosdaq: "코스닥", us: "미국" }[_market] || _market;
+    if (labelEl) labelEl.textContent  = cache.type === "kumo"
+      ? `${label} 전체 분석 완료 (체류기간 순) — 이전 결과`
+      : `${label} 전체 분석 완료 (점수 순) — 이전 결과`;
+    if (grid) {
+      grid.innerHTML = cache.type === "kumo"
+        ? _results.map(c => renderKumoCard(c)).join("")
+        : _results.map((c, i) => renderFisCard(c, i)).join("");
+    }
+  } catch(e) { if (rs) rs.style.display = "none"; }
+}
+
+// 페이지 로드 시 이전 결과 자동 복원
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const raw = sessionStorage.getItem("cfie_scan_cache");
+    if (!raw) return;
+    const { type, market } = JSON.parse(raw);
+    // 저장된 탭/마켓으로 UI 복원 → 내부에서 _restoreScanCache 호출됨
+    if (type)   selectScanType(type);
+    if (market) selectMarket(market);
+  } catch(e) {}
+});

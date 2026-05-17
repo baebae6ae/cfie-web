@@ -128,6 +128,9 @@
   transition: all 200ms;
   width: 100%;
   margin-bottom: var(--space-xl);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .scan-btn:hover:not(:disabled) {
