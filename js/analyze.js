@@ -805,7 +805,7 @@ function runBacktest(fisBars) {
     const endIdx = Math.min(i + 5, n - 1);
     let hadMFE = false;
     for (let j = i + 1; j <= endIdx; j++) {
-      if ((fisBars[j]?.high || 0) > curClose * 1.01) { hadMFE = true; break; }
+      if ((fisBars[j]?.high || 0) > curClose * 1.02) { hadMFE = true; break; }
     }
     buckets[key].counts.mfe++;
     if (hadMFE) buckets[key].wins.mfe++;
@@ -827,7 +827,7 @@ function renderBacktest(fisBars) {
 
     // ── 헤더 ──
     let html = `
-      <div class="bt-note">현재 종목 과거 데이터 기준 (50점 이상 구간) | MFE = 5봉 내 +1% 도달률</div>
+      <div class="bt-note">현재 종목 과거 데이터 기준 (50점 이상 구간) | MFE = 5봉 내 +2% 도달률 (스윙 첫 익절 기준)</div>
       <div class="bt-grid-hd">
         <span>구간</span><span>N</span><span>+1봉</span><span>+3봉</span><span>+5봉</span><span>MFE</span>
       </div>`;
@@ -881,10 +881,33 @@ function renderBacktest(fisBars) {
     html += diag;
 
     // ── 범례 안내 ──
+    // ── 지표 유효성 진단: 점수↑ → MFE↑ 여부 ──
+    const keys2 = ["90+", "80-90", "65-80", "50-65"];
+    const mfeVals = keys2.map(k => buckets[k].counts.mfe ? buckets[k].wins.mfe / buckets[k].counts.mfe * 100 : null);
+    // 데이터 있는 구간만 추출해 단조감소 체크
+    const validMfe = mfeVals.filter(v => v !== null);
+    let isMonotone = true;
+    for (let _i = 1; _i < validMfe.length; _i++) {
+      if (validMfe[_i] > validMfe[_i-1] + 3) { isMonotone = false; break; } // 3% 허용 오차
+    }
+    const hasEnough = validMfe.length >= 2;
+    let validHtml = "";
+    if (!hasEnough) {
+      validHtml = `<div class="bt-diag bt-neutral">△ 점수 구간 데이터 부족 — 유효성 판단 불가</div>`;
+    } else if (isMonotone) {
+      const labels = keys2.filter((k,i) => mfeVals[i] !== null).map((k,i) => `${k}: ${validMfe[i].toFixed(0)}%`).join(" > ");
+      validHtml = `<div class="bt-diag bt-ok">✓ 점수↑ = MFE↑ 확인 (${labels}) — 지표 변별력 유효</div>`;
+    } else {
+      const labels = keys2.filter((k,i) => mfeVals[i] !== null).map((k,i) => `${k}: ${validMfe[i].toFixed(0)}%`).join(" / ");
+      validHtml = `<div class="bt-diag bt-warn">⚠ 점수와 MFE 상관 낮음 (${labels}) — 이 종목은 기술적 점수 신뢰도 낮을 수 있음</div>`;
+    }
+    html += validHtml;
+
     html += `<div class="bt-legend">
       진입점수는 <b>1봉 상승 예측</b>이 아닌 <b>스윙 세팅 품질(5봉 기준)</b> 지표입니다.
-      MFE가 높으면 +1봉에 눌리더라도 수익 실현 기회가 있었음을 뜻합니다.
-    </div>`;
+      MFE(+2%) = 진입가 기준 5봉 내 장중 +2% 도달 비율 (스윙 첫 익절 기준).
+      <b>점수↑=MFE↑</b>가 확인되면 이 종목에서 지표 변별력이 유효합니다.
+    </div>`
 
     el.innerHTML = html;
   }, 10);
