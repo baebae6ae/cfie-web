@@ -38,8 +38,6 @@ const US_SECTORS = [
 ];
 
 // ── 이름 단축 (market.py::short_name 로직) ──────────
-const _btBarsCache = {};  // 종목별 bars 캐시 (미니 백테스트용)
-
 function _shortName(name) {
   if (!name) return "";
   let s = name.replace(/홀딩스|전자/g, "").replace(/\s?(Inc\.|Corp\.|Ltd\.)/i, "").trim();
@@ -284,15 +282,7 @@ async function _check52h(ticker, name) {
     const dClose = bars[bars.length - 1].close;
     const dPrev  = bars.length >= 2 ? bars[bars.length - 2].close : dClose;
     const day_pct = dPrev > 0 ? (dClose - dPrev) / dPrev * 100 : 0;
-    // 현재 진입점수 계산 (1회만) + bars 캐싱 (미니 백테스트용)
-    let entryScore = null;
-    try {
-      if (typeof calcEntryScore === "function") {
-        entryScore = calcEntryScore(bars).score;
-        _btBarsCache[ticker] = bars;
-      }
-    } catch(e) {}
-    return { ticker, name, close: dClose, high52, gap_pct, streak, day_pct, entryScore };
+    return { ticker, name, close: dClose, high52, gap_pct, streak, day_pct };
   } catch { return null; }
 }
 
@@ -404,20 +394,14 @@ function _render52hCard(s) {
   const gapSign = gap_pct >= 0 ? "+" : "";
   const streak  = s.streak || 0;
   const strColor = streak >= 8 ? "#F59E0B" : streak >= 4 ? "#818CF8" : "#22D3EE";
-  const scoreBadge = s.entryScore !== null && s.entryScore !== undefined
-    ? `<span class="h52-score-badge" style="background:${s.entryScore>=80?'#1a7a3422':s.entryScore>=65?'#56a0d322':'#88888822'};color:${s.entryScore>=80?'#2ea043':s.entryScore>=65?'#56a0d3':'#888'};border-color:${s.entryScore>=80?'#2ea04355':s.entryScore>=65?'#56a0d355':'#88888855'}">${s.entryScore}점</span>`
-    : '';
   return `
-    <div class="h52-card" role="button" tabindex="0">
+    <div class="h52-card" onclick="goAnalyze('${s.ticker}')" role="button" tabindex="0">
       <div class="h52-top">
-        <div class="h52-name-wrap">
+        <div>
           <div class="h52-name">${s.name}</div>
           <div class="h52-ticker">${s.ticker}</div>
         </div>
-        <div class="h52-top-right">
-          ${scoreBadge}
-          <div class="h52-streak" style="background:${strColor}22;color:${strColor};border-color:${strColor}55">${streak}주 연속</div>
-        </div>
+        <div class="h52-streak" style="background:${strColor}22;color:${strColor};border-color:${strColor}55">${streak}주 연속</div>
       </div>
       <div class="h52-price">${fmt(s.close)}</div>
       <div class="h52-meta">
@@ -425,11 +409,6 @@ function _render52hCard(s) {
         <div class="h52-meta-item"><span class="h52-meta-label">고점 대비</span><span class="h52-meta-val ${gapCls}">${gapSign}${gap_pct.toFixed(1)}%</span></div>
         <div class="h52-meta-item"><span class="h52-meta-label">당일 등락</span><span class="h52-meta-val ${dayCls}">${daySign}${(s.day_pct||0).toFixed(2)}%</span></div>
       </div>
-      <div class="h52-actions">
-        <button class="h52-btn-analyze" onclick="goAnalyze('${s.ticker}')">📈 분석</button>
-        <button class="h52-btn-bt" onclick="_showCardBt('${s.ticker}',this)">📊 백테스트</button>
-      </div>
-      <div class="h52-bt-panel" id="bt-${s.ticker}" style="display:none"></div>
     </div>`;
 }
 

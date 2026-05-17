@@ -18,6 +18,7 @@ const KUMO_BODY_RATIO   = 0.25;
 
 // MAX_RESULTS 제한을 사실상 제거 (혹은 충분히 크게 설정)
 const BATCH_SIZE  = 4; 
+const _btFisBarsCache = {};  // 종목별 fisBars 캐시 (백테스트용)
 
 // ── UI 제어 ──────────────────────────────────────────────
 function selectScanType(type) {
@@ -216,6 +217,9 @@ function _analyzeFis(ticker, name, bars) {
   const entry_setup_name   = entryData.setup_name    || "";
   const entry_setup_name2  = entryData.setup_name2   || "";
 
+  // fisBars 캐싱 (백테스트 버튼 클릭 시 재활용)
+  _btFisBarsCache[ticker] = fisBars;
+
   return {
     ticker,
     name,
@@ -340,6 +344,9 @@ function _analyzeKumo(ticker, name, bars) {
   }
 
   const closeV = ich[n - 1].close;
+  // fisBars 캐싱 (백테스트 버튼 클릭 시 재활용)
+  _btFisBarsCache[ticker] = fisBars;
+
   return {
     ticker,
     name,
@@ -454,8 +461,10 @@ function renderFisCard(c, idx) {
       <span class="cs-chip" title="일목균형표">${(c.ichimoku||"—").split("—")[0].trim()}</span>
     </div>
     <div class="cc-actions">
-      <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">차트 분석</button>
+      <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">📈 차트 분석</button>
+      <button class="cc-btn cc-btn-bt" id="bt-btn-${idx}" onclick="_showScanBt('${c.ticker}',${idx})">📊 백테스트</button>
     </div>
+    <div class="cc-bt-panel" id="bt-panel-${idx}" style="display:none"></div>
     <button class="det-toggle" id="det-btn-${idx}" onclick="toggleDetail(${idx})">▶ 상세 설명</button>
     <div class="det-body" id="det-${idx}">
       ${entryDetailHTML(c)}
@@ -588,4 +597,94 @@ function renderKumoCard(c) {
       <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">차트 분석</button>
     </div>
   </div>`;
+}
+// ── 미니 백테스트 (스캔 카드 버튼 클릭 시 지연 계산) ──────────────
+function _showScanBt(ticker, idx) {
+  const panel = document.getElementById("bt-panel-" + idx);
+  const btn   = document.getElementById("bt-btn-" + idx);
+  if (!panel || !btn) return;
+  // 토글: 이미 열려있으면 닫기
+  if (panel.style.display !== "none") {
+    panel.style.display = "none";
+    btn.textContent = "📊 백테스트";
+    return;
+  }
+  btn.textContent = "⏳ 계산 중…";
+  btn.disabled = true;
+  panel.style.display = "block";
+  panel.innerHTML = "<div class='scan-bt-loading'>계산 중…</div>";
+
+  setTimeout(() => {
+    const fisBars = _btFisBarsCache[ticker];
+    if (!fisBars || typeof calcEntryScore !== "function") {
+      panel.innerHTML = "<div class='scan-bt-empty'>데이터 없음</div>";
+      btn.textContent = "📊 백테스트"; btn.disabled = false; return;
+    }
+    // 최근 200봉만 사용 (속도 최적화)
+    const useBars = fisBars.length > 200 ? fisBars.slice(-200) : fisBars;
+    const MIN_LB = 80;
+    const n = useBars.length;
+    if (n < MIN_LB + 6) {
+      panel.innerHTML = "<div class='scan-bt-empty'>데이터 부족 (최소 86봉)</div>";
+      btn.textContent = "📊 백테스트"; btn.disabled = false; return;
+    }
+
+    const keys   = ["90+", "80-90", "65-80", "50-65", "50미만"];
+    const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922","50미만":"#888"};
+    const bkts = {};
+    for (const k of keys) bkts[k] = { color: COLORS[k], counts:{1:0,5:0,mfe:0}, wins:{1:0,5:0,mfe:0} };
+
+    for (let i = MIN_LB; i < n - 5; i++) {
+      const sc = calcEntryScore(useBars.slice(0, i+1)).score;
+      if (sc < 0) continue;
+      const cc = useBars[i].close;
+      if (!cc || cc <= 0) continue;
+      const key = sc>=90?"90+":sc>=80?"80-90":sc>=65?"65-80":sc>=50?"50-65":"50미만";
+      [1, 5].forEach(p => {
+        if (i+p >= n) return;
+        const fc = useBars[i+p]?.close;
+        if (!fc) return;
+        bkts[key].counts[p]++; if (fc > cc) bkts[key].wins[p]++;
+      });
+      // MFE: 5봉 내 +2% 도달
+      const ei = Math.min(i+5, n-1);
+      let mfe = false;
+      for (let j = i+1; j <= ei; j++) { if ((useBars[j]?.high||0) > cc*1.02) { mfe=true; break; } }
+      bkts[key].counts.mfe++; if (mfe) bkts[key].wins.mfe++;
+    }
+
+    const pc = (w,t) => {
+      if (!t) return `<span class="scan-bt-na">—</span>`;
+      const v = w/t*100;
+      const col = v>=55?"#2ea043":v>=45?"#d29922":"#e53935";
+      return `<b style="color:${col}">${v.toFixed(0)}%</b>`;
+    };
+
+    let h = `<div class="scan-bt-note">최근 200봉 기준 · MFE = 5봉내 +2% 도달률</div>`;
+    h += `<div class="scan-bt-hd"><span>구간</span><span>N</span><span>+1봉</span><span>+5봉</span><span>MFE</span></div>`;
+    for (const k of keys) {
+      const b = bkts[k]; const n1 = b.counts[1];
+      const mv = b.counts.mfe ? b.wins.mfe/b.counts.mfe*100 : 0;
+      const mc = mv>=65?"#2ea043":mv>=50?"#d29922":"#e53935";
+      h += `<div class="scan-bt-row">
+        <span style="color:${b.color};font-weight:700">${k}</span>
+        <span>${n1||0}</span>
+        ${pc(b.wins[1],b.counts[1])}
+        ${pc(b.wins[5],b.counts[5])}
+        <b style="color:${n1?mc:"#888"}">${n1?mv.toFixed(0)+"%":"—"}</b>
+      </div>`;
+    }
+
+    // 유효성 진단: 90+MFE vs 50미만MFE
+    const top = bkts["90+"].counts.mfe ? bkts["90+"].wins.mfe/bkts["90+"].counts.mfe*100 : null;
+    const bot = bkts["50미만"].counts.mfe ? bkts["50미만"].wins.mfe/bkts["50미만"].counts.mfe*100 : null;
+    if (top !== null && bot !== null) {
+      const ok = top >= bot + 5;
+      const dcls = ok ? "bt-ok" : "bt-warn";
+      h += `<div class="scan-bt-diag ${dcls}">${ok?"✓":"⚠"} 90+MFE ${top.toFixed(0)}% vs 50미만MFE ${bot.toFixed(0)}% — ${ok?"지표 변별력 유효":"변별력 약함, 조심"}</div>`;
+    }
+
+    panel.innerHTML = h;
+    btn.textContent = "📊 접기"; btn.disabled = false;
+  }, 20);
 }
