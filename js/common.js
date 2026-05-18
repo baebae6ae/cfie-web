@@ -88,7 +88,10 @@ function goAnalyze(ticker) {
   window.location.href = "analyze.html?t=" + encodeURIComponent(ticker);
 }
 function looksLikeTicker(query) {
-  return /^[A-Za-z0-9.^=\-]+$/.test((query || "").trim());
+  const q = (query || "").trim();
+  // 순수 알파벳 6자 이상이면 회사명으로 간주 → searchTicker 경유
+  if (/^[A-Za-z]+$/.test(q) && q.length > 5) return false;
+  return /^[A-Za-z0-9.^=\-]+$/.test(q);
 }
 
 // ── 검색 ──────────────────────────────────────────────

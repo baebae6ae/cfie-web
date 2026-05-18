@@ -1,3 +1,193 @@
+
+// ── 미국 주요 종목 로컬 검색 DB (ticker, 검색어들...) ──────────────────────
+// API 없이 이름으로 즉시 검색 가능
+const _US_STOCKS = [
+  // Mega-cap Tech
+  ["AAPL",  "Apple"],
+  ["MSFT",  "Microsoft"],
+  ["GOOGL", "Alphabet", "Google"],
+  ["GOOG",  "Alphabet C", "Google C"],
+  ["META",  "Meta", "Facebook"],
+  ["AMZN",  "Amazon"],
+  ["TSLA",  "Tesla"],
+  ["NVDA",  "NVIDIA", "Nvidia"],
+  ["AVGO",  "Broadcom"],
+  ["ORCL",  "Oracle"],
+  ["AMD",   "Advanced Micro Devices", "AMD"],
+  ["INTC",  "Intel"],
+  ["CRM",   "Salesforce"],
+  ["TSM",   "TSMC", "Taiwan Semiconductor"],
+  ["QCOM",  "Qualcomm"],
+  ["MU",    "Micron", "Micron Technology"],
+  ["AMAT",  "Applied Materials"],
+  ["KLAC",  "KLA Corporation"],
+  ["LRCX",  "Lam Research"],
+  ["ASML",  "ASML"],
+  ["ARM",   "ARM Holdings"],
+  ["ADBE",  "Adobe"],
+  ["INTU",  "Intuit"],
+  ["NOW",   "ServiceNow"],
+  ["SNOW",  "Snowflake"],
+  ["DDOG",  "Datadog"],
+  ["NET",   "Cloudflare"],
+  ["MDB",   "MongoDB"],
+  ["PANW",  "Palo Alto Networks"],
+  ["CRWD",  "CrowdStrike"],
+  ["ZS",    "Zscaler"],
+  ["OKTA",  "Okta"],
+  ["TEAM",  "Atlassian"],
+  ["SAP",   "SAP"],
+  ["IBM",   "IBM"],
+  ["HPQ",   "HP Inc"],
+  ["DELL",  "Dell"],
+  // Communication
+  ["NFLX",  "Netflix"],
+  ["DIS",   "Disney"],
+  ["T",     "AT&T"],
+  ["VZ",    "Verizon"],
+  ["CMCSA", "Comcast"],
+  ["WBD",   "Warner Bros Discovery"],
+  ["PARA",  "Paramount"],
+  ["SPOT",  "Spotify"],
+  ["SNAP",  "Snap", "Snapchat"],
+  ["PINS",  "Pinterest"],
+  ["TTWO",  "Take-Two Interactive", "2K"],
+  ["EA",    "Electronic Arts"],
+  ["RBLX",  "Roblox"],
+  ["U",     "Unity"],
+  // Consumer
+  ["AMZN",  "Amazon Prime"],
+  ["HD",    "Home Depot"],
+  ["COST",  "Costco"],
+  ["WMT",   "Walmart"],
+  ["TGT",   "Target"],
+  ["KO",    "Coca-Cola", "Coke"],
+  ["PEP",   "PepsiCo", "Pepsi"],
+  ["NKE",   "Nike"],
+  ["SBUX",  "Starbucks"],
+  ["MCD",   "McDonald"],
+  ["CMG",   "Chipotle"],
+  ["LULU",  "Lululemon"],
+  ["UBER",  "Uber"],
+  ["LYFT",  "Lyft"],
+  ["ABNB",  "Airbnb"],
+  ["DASH",  "DoorDash"],
+  ["SHOP",  "Shopify"],
+  ["ETSY",  "Etsy"],
+  ["EBAY",  "eBay"],
+  // Finance
+  ["JPM",   "JPMorgan", "JP Morgan"],
+  ["BAC",   "Bank of America"],
+  ["WFC",   "Wells Fargo"],
+  ["C",     "Citigroup", "Citi"],
+  ["GS",    "Goldman Sachs"],
+  ["MS",    "Morgan Stanley"],
+  ["V",     "Visa"],
+  ["MA",    "Mastercard"],
+  ["AXP",   "American Express", "Amex"],
+  ["BLK",   "BlackRock"],
+  ["SCHW",  "Charles Schwab"],
+  ["PYPL",  "PayPal"],
+  ["SQ",    "Block", "Square"],
+  ["COIN",  "Coinbase"],
+  ["HOOD",  "Robinhood"],
+  ["BRK-B", "Berkshire Hathaway"],
+  // Healthcare
+  ["UNH",   "UnitedHealth"],
+  ["LLY",   "Eli Lilly"],
+  ["JNJ",   "Johnson Johnson", "J&J"],
+  ["ABBV",  "AbbVie"],
+  ["MRK",   "Merck"],
+  ["PFE",   "Pfizer"],
+  ["AMGN",  "Amgen"],
+  ["GILD",  "Gilead"],
+  ["VRTX",  "Vertex Pharmaceuticals"],
+  ["REGN",  "Regeneron"],
+  ["ISRG",  "Intuitive Surgical"],
+  ["BMY",   "Bristol-Myers Squibb"],
+  ["CVS",   "CVS Health"],
+  ["ELV",   "Elevance Health"],
+  ["CI",    "Cigna"],
+  // Energy
+  ["XOM",   "Exxon", "ExxonMobil"],
+  ["CVX",   "Chevron"],
+  ["COP",   "ConocoPhillips"],
+  ["SLB",   "SLB", "Schlumberger"],
+  ["EOG",   "EOG Resources"],
+  ["PSX",   "Phillips 66"],
+  ["MPC",   "Marathon Petroleum"],
+  ["OXY",   "Occidental Petroleum"],
+  // Industrial
+  ["CAT",   "Caterpillar"],
+  ["BA",    "Boeing"],
+  ["HON",   "Honeywell"],
+  ["LMT",   "Lockheed Martin"],
+  ["RTX",   "RTX", "Raytheon"],
+  ["GE",    "GE Aerospace", "General Electric"],
+  ["DE",    "Deere", "John Deere"],
+  ["MMM",   "3M"],
+  ["GD",    "General Dynamics"],
+  ["NOC",   "Northrop Grumman"],
+  ["UPS",   "UPS", "United Parcel Service"],
+  ["FDX",   "FedEx"],
+  ["CSX",   "CSX"],
+  ["UNP",   "Union Pacific"],
+  // Materials / Real Estate / Utilities
+  ["LIN",   "Linde"],
+  ["APD",   "Air Products"],
+  ["AMT",   "American Tower"],
+  ["PLD",   "Prologis"],
+  ["EQIX",  "Equinix"],
+  ["NEE",   "NextEra Energy"],
+  ["DUK",   "Duke Energy"],
+  // ETFs
+  ["SPY",   "S&P 500 ETF", "SPDR SPY"],
+  ["QQQ",   "Nasdaq ETF", "Invesco QQQ"],
+  ["IWM",   "Russell 2000 ETF"],
+  ["VTI",   "Vanguard Total Market"],
+  ["VOO",   "Vanguard S&P 500"],
+  ["ARKK",  "ARK Innovation"],
+  ["XLK",   "Tech ETF", "SPDR XLK"],
+  ["XLF",   "Finance ETF"],
+  ["XLV",   "Healthcare ETF"],
+  ["XLE",   "Energy ETF"],
+  // Asian ADRs
+  ["BABA",  "Alibaba"],
+  ["BIDU",  "Baidu"],
+  ["JD",    "JD.com"],
+  ["PDD",   "PDD Holdings", "Temu", "Pinduoduo"],
+  ["NIO",   "NIO"],
+  ["XPEV",  "Xpeng"],
+  ["LI",    "Li Auto"],
+  ["RIVN",  "Rivian"],
+  ["LCID",  "Lucid Motors"],
+  ["PLTR",  "Palantir"],
+  ["COIN",  "Coinbase"],
+  ["SONY",  "Sony"],
+  ["TM",    "Toyota"],
+  ["HMC",   "Honda"],
+];
+
+function _searchUSLocal(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const results = [];
+  const seen = new Set();
+  for (const [ticker, ...names] of _US_STOCKS) {
+    if (seen.has(ticker)) continue;
+    const match =
+      ticker.toLowerCase() === q ||
+      ticker.toLowerCase().startsWith(q) ||
+      names.some(n => n.toLowerCase().includes(q));
+    if (match) {
+      seen.add(ticker);
+      results.push({ ticker, name: names[0] || ticker, exchange: "US", type: "EQUITY" });
+    }
+    if (results.length >= 8) break;
+  }
+  return results;
+}
+
 // ═══════════════════════════════════════════════
 // Yahoo Finance API wrapper (GitHub Pages 호환)
 // ═══════════════════════════════════════════════
@@ -122,10 +312,15 @@ async function fetchMultiQuote(tickers) {
 // ── 종목 검색 ────────────────────────────────────
 async function searchTicker(query) {
   if (!query || query.length < 1) return [];
+  // 1. 로컬 US 종목 DB 우선 검색 (API 불필요, 즉시 응답)
+  const local = _searchUSLocal(query);
+  if (local.length >= 4) return local;
+
+  // 2. Yahoo Finance API 시도 (CORS 프록시 경유)
   const url = `${_YF_BASE}/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=0&enableFuzzyQuery=true&quotesCount=8`;
   try {
     const json = await _fetch(url);
-    return (json?.quotes || [])
+    const api = (json?.quotes || [])
       .filter(q => ["EQUITY", "ETF", "INDEX"].includes(q.quoteType))
       .map(q => ({
         ticker:   q.symbol,
@@ -133,5 +328,8 @@ async function searchTicker(query) {
         exchange: q.exchange,
         type:     q.quoteType,
       }));
-  } catch { return []; }
+    // 로컬 결과 우선, API 결과로 보완
+    const localTickers = new Set(local.map(r => r.ticker));
+    return [...local, ...api.filter(r => !localTickers.has(r.ticker))].slice(0, 8);
+  } catch { return local; }
 }
