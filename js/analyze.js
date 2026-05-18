@@ -822,13 +822,13 @@ function renderEntryScore(entry) {
                             "섹터 또는 그룹 앝세 — 추가 주의",
       extra: '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + sectorTag + groupTag + '<span style="color:' + extCol + ';font-weight:700">' + extStr + 'pt</span></div>' },
     { num:"⑨", name:"추세 신선도 (독립지표)", v: freshnessScore, max:8, ideal:"20봉 이내 최적",
-      desc: freshnessBars === 0 ? "EMA20 < EMA60 — 하락/횊보 구간, 기계적 진입 비권장" :
-            freshnessBars <= 10 ? 골든크로스 후 봉 — 추세 초반 최적 진입 구간 :
-            freshnessBars <= 20 ? 추세 진입 봉 경과 — 상승 초중반, 기계적 진입 유효 :
-            freshnessBars <= 35 ? 추세 진입 봉 경과 — 중반, 상승 여력 점검 권장 :
-            freshnessBars <= 55 ? 추세 진입 봉 경과 — 후반 경고, 추격 매수 부담 증가 :
-                                  추세 진입 봉+ 경과 — 매우 노후, 기계적 진입 자제 권장,
-      extra: <div style="color:#888;font-size:10.5px;margin-top:4px">⚡ FIS·진입점수와 독립적 — 가격·지표 레벨이 아닌 추세 시간 경과 기반</div> },
+      desc: freshnessBars === 0 ? "EMA20 < EMA60 — 하락/회bo 구간, 기계적 진입 비권장" :
+            freshnessBars <= 10 ? `골든크로스 후 ${freshnessBars}봉 — 추세 초반 최적 진입 구간` :
+            freshnessBars <= 20 ? `추세 진입 ${freshnessBars}봉 경과 — 상승 초중반, 기계적 진입 유효` :
+            freshnessBars <= 35 ? `추세 진입 ${freshnessBars}봉 경과 — 중반, 상승 여력 점검 권장` :
+            freshnessBars <= 55 ? `추세 진입 ${freshnessBars}봉 경과 — 후반 경고, 추격 매수 부담 증가` :
+                                  `추세 진입 ${freshnessBars}봉+ 경과 — 매우 노후, 기계적 진입 자제 권장`,
+      extra: `<div style="color:#888;font-size:10.5px;margin-top:4px">⚡ FIS·진입점수와 독립적 — 가격·지표 레벨이 아닌 추세 시간 경과 기반</div>` },
   ];
 
   const compHTML = compRows.map(r => {

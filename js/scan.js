@@ -778,6 +778,27 @@ function renderKumoCard(c) {
 
     panel.innerHTML = h;
     btn.textContent = "\uD83D\uDCCA \uC811\uAE30"; btn.disabled = false;
+
+    // 백테스트 결과가 bt-ok이면 카드 강조 (평균R>=0.5 + 승률>=40%)
+    const card = panel.closest('.candidate-card');
+    if (card) {
+      if (diag === 'bt-ok') {
+        card.style.border     = '1.5px solid rgba(46,160,67,0.6)';
+        card.style.background = 'linear-gradient(135deg,rgba(46,160,67,0.10) 0%,var(--bg2,#161b22) 60%)';
+        if (!card.querySelector('.bt-ok-badge')) {
+          const badge = document.createElement('div');
+          badge.className = 'bt-ok-badge';
+          badge.textContent = '✓ 백테스트 유효';
+          badge.style.cssText = 'position:absolute;top:8px;right:8px;background:#2ea043;color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;pointer-events:none';
+          card.style.position = 'relative';
+          card.appendChild(badge);
+        }
+      } else if (diag === 'bt-bad') {
+        card.style.border = '1.5px solid rgba(229,57,53,0.5)';
+      } else {
+        card.style.border = '1.5px solid rgba(210,153,34,0.5)';
+      }
+    }
   }, 20);
 }
 
