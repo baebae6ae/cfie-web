@@ -310,7 +310,7 @@ async function fetchMultiQuote(tickers) {
 }
 
 // ── 종목 검색 ────────────────────────────────────
-async function searchTicker(query) {
+async async function searchTicker(query) {
   if (!query || query.length < 1) return [];
   // 1. 로컬 US 종목 DB 우선 검색 (API 불필요, 즉시 응답)
   const local = _searchUSLocal(query);
