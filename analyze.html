@@ -113,6 +113,43 @@
         <div class="entry-metrics" id="entryMetrics"></div>
       </div>
 
+      <!-- 기계적 진입 체크 -->
+      <div class="sidebar-box">
+        <div class="sbox-header">⚡ 기계적 진입 체크</div>
+        <div class="mech-checklist">
+          <div class="mech-row">
+            <span class="mch-icon" id="mch-score-icon">☐</span>
+            <span class="mch-label">진입점수 ≥ 80</span>
+            <span class="mch-val" id="mch-score-val">—</span>
+          </div>
+          <div class="mech-row">
+            <span class="mch-icon" id="mch-fis-icon">☐</span>
+            <span class="mch-label">FIS ≥ 80</span>
+            <span class="mch-val" id="mch-fis-val">—</span>
+          </div>
+          <div class="mech-row">
+            <span class="mch-icon" id="mch-fresh-icon">☐</span>
+            <span class="mch-label">추세신선도 ≥ 0pt</span>
+            <span class="mch-val" id="mch-fresh-val">—</span>
+          </div>
+          <div class="mech-row">
+            <span class="mch-icon" id="mch-rr-icon">☐</span>
+            <span class="mch-label">R:R ≥ 2.0</span>
+            <span class="mch-val" id="mch-rr-val">평단가 입력 후</span>
+          </div>
+          <div class="mech-verdict" id="mechVerdict">차트 로드 후 계산</div>
+        </div>
+        <div class="mech-guide">
+          <div class="mech-guide-title">📋 진입 후 행동 규칙</div>
+          <div class="mech-guide-body">
+            <div class="mech-guide-row"><span class="mech-step">진입 직후</span><span>Chandelier 손절(22봉 고점−ATR×3) 주문 설정</span></div>
+            <div class="mech-guide-row"><span class="mech-step">1차 익절</span><span>진입가+ATR×2 → 절반 매도 + 손절↑진입가</span></div>
+            <div class="mech-guide-row"><span class="mech-step">2차 익절</span><span>ATR×4 또는 BB 상단 도달 → 나머지 전량</span></div>
+            <div class="mech-guide-row"><span class="mech-step">기간 손절</span><span>15봉(약 3주) 초과 시 수익 무관 전량 청산</span></div>
+          </div>
+        </div>
+      </div>
+
       <!-- 주요 지표 -->
       <div class="sidebar-box">
         <div class="sbox-header">📈 주요 지표</div>
@@ -121,7 +158,7 @@
 
       <!-- 손절 분석 -->
       <div class="sidebar-box">
-        <div class="sbox-header">✂ 손절 분석</div>
+        <div class="sbox-header">✂ 손절 / 익절 분석</div>
         <div class="avg-cost-section">
           <div class="avg-cost-row">
             <label class="avg-cost-label">평단가</label>
@@ -145,7 +182,24 @@
               <span class="sl-val" id="slEMA20">—</span>
               <span class="sl-sig" id="slEMASignal"></span>
             </div>
-            <div class="sl-desc">① 22봉 고점−ATR×3 (Chandelier 표준) &nbsp;② 5봉 저점−ATR×0.5</div>
+            <div class="sl-divider"></div>
+            <div class="sl-item sl-tp-item">
+              <span class="sl-key sl-tp-key">④ 1차 익절 (ATR×2)</span>
+              <span class="sl-val sl-tp-val" id="tpPrice1">—</span>
+              <span class="sl-pct" id="tpPct1"></span>
+            </div>
+            <div id="breakEvenNote" class="sl-breakeven"></div>
+            <div class="sl-item sl-tp-item">
+              <span class="sl-key sl-tp-key">⑤ 2차 익절 (ATR×4/BB)</span>
+              <span class="sl-val sl-tp-val" id="tpPrice2">—</span>
+              <span class="sl-pct" id="tpPct2"></span>
+            </div>
+            <div class="sl-item" id="rrRow">
+              <span class="sl-key">손익비 (R:R)</span>
+              <span class="sl-val" id="rrValue" style="font-size:13px">—</span>
+              <span class="sl-sig" id="rrSignal"></span>
+            </div>
+            <div class="sl-desc">① 22봉 고점−ATR×3 | ④ 진입가+ATR×2 (기계적 1유 익절) | ⑤ ATR×4 또는 BB 상단</div>
           </div>
         </div>
       </div>

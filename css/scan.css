@@ -923,6 +923,7 @@
 }
 .scan-bt-diag.bt-ok   { background: #2ea04320; color: #2ea043; }
 .scan-bt-diag.bt-warn { background: #e5393520; color: #e53935; }
+.scan-bt-diag.bt-bad  { background: #e5393540; color: #c62828; font-weight:700; }
 .scan-bt-note {
   font-size: 9.5px;
   color: var(--text3);

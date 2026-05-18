@@ -1012,4 +1012,31 @@
   color: var(--text3);
   margin-bottom: 6px;
   line-height: 1.4;
-}
+}﻿
+/* -- 익절선 / 손익비 추가 스타일 */
+.sl-divider { height: 1px; background: var(--border2); margin: 4px 0; }
+.sl-tp-key  { color: var(--bull, #2ea043) !important; }
+.sl-tp-val  { color: var(--bull, #2ea043) !important; }
+.sl-tp-item .sl-val { color: var(--bull, #2ea043); }﻿
+/* ── 기계적 진입 체크리스트 ───────────────────────────── */
+.mech-checklist { display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }
+.mech-row { display:flex; align-items:center; gap:6px; font-size:12.5px; }
+.mch-icon { font-size:15px; min-width:17px; line-height:1; }
+.mch-label { flex:1; color:var(--text1); }
+.mch-val { font-weight:700; font-size:12px; min-width:60px; text-align:right; }
+
+.mech-verdict { margin-top:6px; padding:7px 10px; border-radius:6px; font-size:12.5px; font-weight:700; text-align:center; }
+.mech-ok   { background:rgba(46,160,67,.15); color:var(--bull,#2ea043); border:1px solid rgba(46,160,67,.3); }
+.mech-no   { background:rgba(229,57,53,.12); color:var(--bear,#e53935); border:1px solid rgba(229,57,53,.3); }
+.mech-wait { background:rgba(210,153,34,.12); color:#d29922; border:1px solid rgba(210,153,34,.3); }
+
+/* ── 기계적 전략 가이드 ──────────────────────────────── */
+.mech-guide { border-top:1px solid var(--border2); margin-top:10px; padding-top:8px; }
+.mech-guide-title { font-size:11.5px; color:var(--text2); font-weight:600; margin-bottom:6px; }
+.mech-guide-body { display:flex; flex-direction:column; gap:5px; }
+.mech-guide-row { display:flex; gap:8px; font-size:11.5px; line-height:1.45; }
+.mech-step { min-width:56px; font-weight:700; color:var(--accent,#1565C0); flex-shrink:0; }
+
+/* ── R:R 경고 / Break-even 노트 ─────────────────────── */
+.rr-warn { background:rgba(229,57,53,.09); border-radius:4px; }
+.sl-breakeven { font-size:11px; color:var(--bull,#2ea043); padding:3px 0 0 2px; line-height:1.4; display:none; }

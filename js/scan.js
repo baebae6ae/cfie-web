@@ -219,10 +219,8 @@ function _analyzeFis(ticker, name, bars) {
 
   const fis = judgment.fis ?? 0;
 
-  // Python 필터 조건 동일
-  if (fis   <  FIS_FILTER.fis)    return null;  // fis >= 30
-  if (risk  <= FIS_FILTER.risk)   return null;  // risk > -16
-  if (trend <= FIS_FILTER.trend)  return null;  // trend > 0
+  // 기계적 진입 조건 1: FIS >= 80
+  if (fis < 80) return null;
 
   // 섹터 context
   const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
@@ -233,16 +231,31 @@ function _analyzeFis(ticker, name, bars) {
   if (!entryData) return null;
   const entry = entryData.score ?? 0;
 
-  if (entry < FIS_FILTER.entry)  return null;  // entry_score >= 55
+  // 기계적 진입 조건 2: 통합 진입 점수 >= 80 (FIS·신선도·구조 모두 반영)
+  if (entry < 80) return null;
+
+  // 기계적 진입 조건 3: 추세 신선도 >= 0 (추세 경과 봉수 <= 35)
+  const biu = entryData.metrics?.freshness_bars ?? 0;
+  if (biu > 35) return null;
 
   const close_v  = last.close  ?? last.Close  ?? 0;
   const ema20_v  = last.EMA20  ?? close_v;
   const atr_v    = last.ATR14  ?? 0;
   const high20_v = fisBars.slice(-20).reduce((m, b) =>
     Math.max(m, b.high ?? b.High ?? 0), -Infinity);
+  const high22_v = fisBars.slice(-22).reduce((m, b) =>
+    Math.max(m, b.high ?? b.High ?? 0), -Infinity);
   const ema20_gap = ema20_v > 0
     ? Math.round(((close_v - ema20_v) / ema20_v * 100) * 10) / 10
     : 0;
+
+  // 기계적 진입 조건 4: 현재가 기준 R:R >= 2.0
+  // 손절 = Chandelier (22봉 고점 - ATR×3), 목표 = ATR×4 (2차 익절)
+  const _slDist = close_v - (high22_v - atr_v * 3);
+  const rr_val  = (_slDist > 0 && atr_v > 0)
+    ? Math.round((atr_v * 4 / _slDist) * 100) / 100
+    : 0;
+  if (rr_val < 2.0) return null;
 
   const entry_components   = entryData.components    || {};
   const entry_setup_scores = entryData.setup_scores  || {};
@@ -267,6 +280,8 @@ function _analyzeFis(ticker, name, bars) {
     volume:       Math.round(volume * 100) / 100,
     risk:         Math.round(risk * 100) / 100,
     entry_score:  Math.round(entry),
+    rr:           rr_val,
+    freshness_bars: biu,
     entry_setup_name,
     entry_setup_name2,
     entry_components,
@@ -481,8 +496,8 @@ function renderFisCard(c, idx) {
         <div class="cc-ticker">${c.ticker} · ${pf}${fmt(c.close)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <div class="cc-fis-badge" style="background:${col}">FIS ${c.fis>=0?"+":""}${c.fis.toFixed(0)}</div>
-        <div class="cc-fis-badge" style="background:${eCol};font-size:11px">진입 점수 ${eScore.toFixed(0)}</div>
+        <div class="cc-fis-badge" style="background:${eCol}">진입 점수 ${eScore.toFixed(0)}</div>
+        <div class="cc-fis-badge" style="background:#1565C0;font-size:11px">R:R ${(c.rr??0).toFixed(1)}</div>
       </div>
     </div>
     <div class="cc-label" style="color:${col}">${c.label}</div>
@@ -490,7 +505,7 @@ function renderFisCard(c, idx) {
     <div class="cc-scores">
       <span class="cs-chip ${tCls}" title="추세점수">추세 ${c.trend>=0?"+":""}${c.trend.toFixed(0)}</span>
       <span class="cs-chip ${mCls}" title="모멘텀">모멘텀 ${c.momentum>=0?"+":""}${c.momentum.toFixed(0)}</span>
-      <span class="cs-chip" style="background:rgba(46,160,67,0.12);color:#56d364" title="진입 점수">진입 ${eScore.toFixed(0)}</span>
+      <span class="cs-chip" style="background:rgba(21,101,192,0.12);color:#90caf9" title="R:R">R:R ${(c.rr??0).toFixed(1)}</span>
       <span class="cs-chip" title="일목균형표">${(c.ichimoku||"—").split("—")[0].trim()}</span>
     </div>
     <div class="cc-actions">
@@ -632,97 +647,151 @@ function renderKumoCard(c) {
   </div>`;
 }
 // ── 미니 백테스트 (스캔 카드 버튼 클릭 시 지연 계산) ──────────────
-function _showScanBt(ticker, idx) {
+﻿﻿function _showScanBt(ticker, idx) {
   const panel = document.getElementById("bt-panel-" + idx);
   const btn   = document.getElementById("bt-btn-" + idx);
   if (!panel || !btn) return;
-  // 토글: 이미 열려있으면 닫기
+
   if (panel.style.display !== "none") {
     panel.style.display = "none";
-    btn.textContent = "📊 백테스트";
+    btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8";
     return;
   }
-  btn.textContent = "⏳ 계산 중…";
+
+  btn.textContent = "\u23F3 \uACC4\uC0B0 \uC911\u2026";
   btn.disabled = true;
   panel.style.display = "block";
-  panel.innerHTML = "<div class='scan-bt-loading'>계산 중…</div>";
+  panel.innerHTML = "<div class='scan-bt-loading'>\uACC4\uC0B0 \uC911\u2026</div>";
 
   setTimeout(() => {
     const fisBars = _btFisBarsCache[ticker];
     if (!fisBars || typeof calcEntryScore !== "function") {
-      panel.innerHTML = "<div class='scan-bt-empty'>데이터 없음</div>";
-      btn.textContent = "📊 백테스트"; btn.disabled = false; return;
+      panel.innerHTML = "<div class='scan-bt-empty'>\uB370\uC774\uD130 \uC5C6\uC74C</div>";
+      btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
-    // 최근 200봉만 사용 (속도 최적화)
-    const useBars = fisBars.length > 200 ? fisBars.slice(-200) : fisBars;
+
+    const n = fisBars.length;
     const MIN_LB = 80;
-    const n = useBars.length;
-    if (n < MIN_LB + 6) {
-      panel.innerHTML = "<div class='scan-bt-empty'>데이터 부족 (최소 86봉)</div>";
-      btn.textContent = "📊 백테스트"; btn.disabled = false; return;
+    if (n < MIN_LB + 20) {
+      panel.innerHTML = "<div class='scan-bt-empty'>\uB370\uC774\uD130 \uBD80\uC871 (\uCD5C\uC18C 100\uBD09)</div>";
+      btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    const keys   = ["90+", "80-90", "65-80", "50-65", "50미만"];
-    const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922","50미만":"#888"};
-    const bkts = {};
-    for (const k of keys) bkts[k] = { color: COLORS[k], counts:{1:0,5:0,mfe:0}, wins:{1:0,5:0,mfe:0} };
+    const trades = [];
+    let skipUntil = 0;
 
-    for (let i = MIN_LB; i < n - 5; i++) {
-      const sc = calcEntryScore(useBars.slice(0, i+1)).score;
-      if (sc < 0) continue;
-      const cc = useBars[i].close;
-      if (!cc || cc <= 0) continue;
-      const key = sc>=90?"90+":sc>=80?"80-90":sc>=65?"65-80":sc>=50?"50-65":"50미만";
-      [1, 5].forEach(p => {
-        if (i+p >= n) return;
-        const fc = useBars[i+p]?.close;
-        if (!fc) return;
-        bkts[key].counts[p]++; if (fc > cc) bkts[key].wins[p]++;
-      });
-      // MFE: 5봉 내 +2% 도달
-      const ei = Math.min(i+5, n-1);
-      let mfe = false;
-      for (let j = i+1; j <= ei; j++) { if ((useBars[j]?.high||0) > cc*1.02) { mfe=true; break; } }
-      bkts[key].counts.mfe++; if (mfe) bkts[key].wins.mfe++;
+    for (let i = MIN_LB; i < n - 26; i++) {
+      if (i < skipUntil) continue;
+
+      // [1] FIS >= 80 (fast pre-filter)
+      const row = fisBars[i];
+      const fis = row.FIS ?? 0;
+      if (fis < 80) continue;
+
+      // [2] Entry score >= 80 + [3] Freshness check
+      const entryData = calcEntryScore(fisBars.slice(0, i + 1));
+      if (!entryData) continue;
+      const entry = entryData.score ?? 0;
+      if (entry < 80) continue;
+      const biu = entryData.metrics?.freshness_bars ?? 0;
+      if (biu > 35) continue;
+
+      const close = row.close ?? row.Close ?? 0;
+      const atr   = row.ATR14 ?? 0;
+      if (!close || !atr) continue;
+
+      // [4] R:R >= 2.0 (current price based)
+      const high22 = fisBars.slice(Math.max(0, i - 21), i + 1)
+        .reduce((m, b) => Math.max(m, b.high ?? b.High ?? 0), -Infinity);
+      const slDist = close - (high22 - atr * 3);
+      if (slDist <= 0) continue;
+      const rrCalc = (atr * 4) / slDist;
+      if (rrCalc < 2.0) continue;
+
+      // \uC2E0\uD638 \uBC1C\uACAC! \uAE30\uACC4\uC801 \uC804\uB7B5 \uC2DC\uBBAC\uB808\uC774\uC158
+      const stopLoss = high22 - atr * 3;
+      const tp1      = close + atr * 2;
+      const tp2      = close + atr * 3;
+
+      let result      = "timeout";
+      let tp1Hit      = false;
+      let activeStop  = stopLoss;
+
+      for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
+        const bar  = fisBars[j];
+        const high = bar.high ?? bar.High ?? bar.close;
+        const low  = bar.low  ?? bar.Low  ?? bar.close;
+
+        // \uC190\uC808 \uBA3C\uC800 \uD655\uC778 (\uC77C\uC911 \uCD5C\uC545 \uC2DC\uB098\uB9AC\uC624)
+        if (low <= activeStop) {
+          result = tp1Hit ? "be_stop" : "stop";
+          break;
+        }
+        // TP1 \uD655\uC778
+        if (!tp1Hit && high >= tp1) {
+          tp1Hit     = true;
+          activeStop = close;  // \uC190\uC808 \uC9C4\uC785\uAC00\uB85C \uC0C1\uD5A5
+        }
+        // TP2 \uD655\uC778
+        if (high >= tp2) {
+          result = "tp2";
+          break;
+        }
+        if (j === Math.min(i + 25, n - 1)) {
+          result = tp1Hit ? "tp1_exit" : "timeout";
+        }
+      }
+
+      trades.push({ result });
+      skipUntil = i + 5;  // \uC2E0\uD638 \uC911\uBCF5 \uBC29\uC9C0
     }
 
-    const pc = (w,t) => {
-      if (!t) return `<span class="scan-bt-na">—</span>`;
-      const v = w/t*100;
-      const col = v>=55?"#2ea043":v>=45?"#d29922":"#e53935";
-      return `<b style="color:${col}">${v.toFixed(0)}%</b>`;
-    };
-
-    let h = `<div class="scan-bt-note">최근 200봉 기준 · MFE = 5봉내 +2% 도달률</div>`;
-    h += `<div class="scan-bt-hd"><span>구간</span><span>N</span><span>+1봉</span><span>+5봉</span><span>MFE</span></div>`;
-    for (const k of keys) {
-      const b = bkts[k]; const n1 = b.counts[1];
-      const mv = b.counts.mfe ? b.wins.mfe/b.counts.mfe*100 : 0;
-      const mc = mv>=65?"#2ea043":mv>=50?"#d29922":"#e53935";
-      h += `<div class="scan-bt-row">
-        <span style="color:${b.color};font-weight:700">${k}</span>
-        <span>${n1||0}</span>
-        ${pc(b.wins[1],b.counts[1])}
-        ${pc(b.wins[5],b.counts[5])}
-        <b style="color:${n1?mc:"#888"}">${n1?mv.toFixed(0)+"%":"—"}</b>
-      </div>`;
+    if (trades.length === 0) {
+      panel.innerHTML = "<div class='scan-bt-empty'>\uACFC\uAC70 \uC2E0\uD638 \uC5C6\uC74C (\uB370\uC774\uD130 \uBD80\uC871)</div>";
+      btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    // 유효성 진단: 90+MFE vs 50미만MFE
-    const top = bkts["90+"].counts.mfe ? bkts["90+"].wins.mfe/bkts["90+"].counts.mfe*100 : null;
-    const bot = bkts["50미만"].counts.mfe ? bkts["50미만"].wins.mfe/bkts["50미만"].counts.mfe*100 : null;
-    if (top !== null && bot !== null) {
-      const ok = top >= bot + 5;
-      const dcls = ok ? "bt-ok" : "bt-warn";
-      h += `<div class="scan-bt-diag ${dcls}">${ok?"✓":"⚠"} 90+MFE ${top.toFixed(0)}% vs 50미만MFE ${bot.toFixed(0)}% — ${ok?"지표 변별력 유효":"변별력 약함, 조심"}</div>`;
-    }
+    const total   = trades.length;
+    const nTp2    = trades.filter(t => t.result === "tp2").length;
+    const nTp1    = trades.filter(t => t.result === "tp1_exit").length;
+    const nBeStop = trades.filter(t => t.result === "be_stop").length;
+    const nStop   = trades.filter(t => t.result === "stop").length;
+    const nTimeout= trades.filter(t => t.result === "timeout").length;
+
+    // R \uACC4\uC0B0: TP2=+3R, TP1\uD6C4\uCCAD\uC0B0\u22481.5R(1/2@TP1, 1/2@\uD604\uAC00\u2248+1R), BE\uC190\uC808\u22481R, \uC190\uC808=-1R, \uD0C0\uC784\uC544\uC6C3=0R
+    const totalR =
+      nTp2    * 3.0 +
+      nTp1    * 1.5 +
+      nBeStop * 1.0 +
+      nStop   * (-1.0);
+    const avgR    = totalR / total;
+    const winRate = (nTp2 + nTp1 + nBeStop) / total * 100;
+
+    const pc   = (cnt) => total ? (cnt / total * 100).toFixed(0) + "%" : "\u2014";
+    const rCol = avgR >= 0.5 ? "#2ea043" : avgR >= 0 ? "#d29922" : "#e53935";
+    const wCol = winRate >= 50 ? "#2ea043" : winRate >= 35 ? "#d29922" : "#e53935";
+    const diag = avgR >= 0.5
+      ? "bt-ok"
+      : avgR >= 0 ? "bt-warn" : "bt-bad";
+    const diagTxt = avgR >= 0.5
+      ? "\u2713 \uC804\uB7B5 \uC720\uD6A8 \u2014 \uC9C4\uC785 \uADFC\uAC70 \uC788\uC74C"
+      : avgR >= 0 ? "\u26A0 \uACBD\uACC4\uC120, \uC8FC\uC758 \uD544\uC694"
+      : "\u26D4 \uC774 \uC885\uBAA9\uC740 \uC804\uB7B5 \uBE44\uD6A8";
+
+    let h = `<div class="scan-bt-note">\uAE30\uACC4\uC801 \uC804\uB7B5 \uC2DC\uBBAC\uB808\uC774\uC158 \u00B7 ${total}\uAC74 \uC2E0\uD638 \u00B7 \uC190\uC808=ChandelierStop \u00B7 \uD0C0\uAC9F=ATR\u00D72/3 \u00B7 25\uBD09\uBCF4\uC720</div>`;
+    h += `<div class="scan-bt-hd"><span>\uACB0\uACFC</span><span>\uAC74\uC218</span><span>\uBE44\uC728</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#2ea043;font-weight:700">2\uCC28 \uC775\uC808 (TP2)</span><span>${nTp2}</span><span>${pc(nTp2)}</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#56d364">1\uCC28 \uD6C4 \uCCA9\uC0B0</span><span>${nTp1}</span><span>${pc(nTp1)}</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#d29922">1\uCC28 \uD6C4 \uBCF8\uC804 \uC190\uC808</span><span>${nBeStop}</span><span>${pc(nBeStop)}</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#e53935">\uC2E4\uC190\uC808</span><span>${nStop}</span><span>${pc(nStop)}</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#888">25\uBD09 \uCCAD\uC0B0</span><span>${nTimeout}</span><span>${pc(nTimeout)}</span></div>`;
+    h += `<div class="scan-bt-diag ${diag}">\uC2B9\uB960 <b style="color:${wCol}">${winRate.toFixed(0)}%</b> &nbsp;\u00B7&nbsp; \uD3C9\uADE0 R <b style="color:${rCol}">${avgR >= 0 ? "+" : ""}${avgR.toFixed(2)}R</b> &nbsp;\u2014&nbsp; ${diagTxt}</div>`;
 
     panel.innerHTML = h;
-    btn.textContent = "📊 접기"; btn.disabled = false;
+    btn.textContent = "\uD83D\uDCCA \uC811\uAE30"; btn.disabled = false;
   }, 20);
 }
 
-// ── sessionStorage 결과 복원 ────────────────────────────────────
 function _restoreScanCache() {
   const rs       = document.getElementById("resultsSection");
   const grid     = document.getElementById("candidatesGrid");

@@ -505,6 +505,36 @@ function scoreRiskPenalty(enriched, idx) {
   return _clip(p, -30, 0);
 }
 
+// ── 추세 신선도: EMA20>EMA60 구간 지속 봉 수 (독립 지표) ──────────────
+// FIS/진입점수와 달리 가격·지표 레벨이 아닌 추세 경과 시간만 측정
+function _barsInCurrentUptrend(enriched, idx) {
+  let cnt = 0;
+  for (let k = idx; k >= 0; k--) {
+    const e20 = _fnum(enriched[k].EMA20, NaN);
+    const e60 = _fnum(enriched[k].EMA60, NaN);
+    if (isNaN(e20) || isNaN(e60)) break;
+    if (e20 <= e60) break;
+    cnt++;
+    if (cnt >= 80) break;
+  }
+  return cnt;
+}
+
+// ── 추세 신선도: EMA20>EMA60 구간 지속 봉 수 (독립 지표) ──────────────
+// FIS/진입점수와 달리 가격·지표 레벨이 아닌 추세 경과 시간만 측정
+function _barsInCurrentUptrend(enriched, idx) {
+  let cnt = 0;
+  for (let k = idx; k >= 0; k--) {
+    const e20 = _fnum(enriched[k].EMA20, NaN);
+    const e60 = _fnum(enriched[k].EMA60, NaN);
+    if (isNaN(e20) || isNaN(e60)) break;
+    if (e20 <= e60) break;
+    cnt++;
+    if (cnt >= 80) break;
+  }
+  return cnt;
+}
+
 // ── calcFIS (engine/fis.py::calc_fis 완전 포팅) ──────────────────────────
 function calcFIS(enriched) {
   return enriched.map((row, i) => {
@@ -677,9 +707,21 @@ function calcEntryScore(enriched, context = {}) {
   }
   external = _clip(external, -6, 12);
 
-  // 합산 → 정규화 /1.22 (기존 동일) + 섹터·그룹 overlay
-  const rawTotal = ctx + setupQuality + trigger + space + riskCtrl;
-  const base     = _clip(Math.round(rawTotal/1.22), 0, 100);  // max raw ~122
+  // ⑨ 추세 신선도 (-8~+8): EMA20>EMA60 구간 지속 봉 수 기반
+  // FIS·진입점수와 독립적 — 가격·지표 레벨이 아닌 추세 경과 시간 측정
+  const _biu = _barsInCurrentUptrend(enriched, n - 1);
+  let freshness;
+  if      (_biu === 0)  freshness = -8;
+  else if (_biu <= 10)  freshness =  8;
+  else if (_biu <= 20)  freshness =  4;
+  else if (_biu <= 35)  freshness =  0;
+  else if (_biu <= 55)  freshness = -4;
+  else                  freshness = -8;
+  freshness = _clip(freshness, -8, 8);
+
+  // 합산 → 정규화 /1.22 (freshness 포함) + 섹터·그룹 overlay
+  const rawTotal = ctx + setupQuality + trigger + space + riskCtrl + freshness;
+  const base     = _clip(Math.round(rawTotal/1.22), 0, 100);
   const total    = _clip(base + external, 0, 100);
   let label;
   if (total>=80) label="최적 진입 구간";
@@ -697,6 +739,7 @@ function calcEntryScore(enriched, context = {}) {
       "확인신호":   Math.round(trigger*10)/10,
       "저항여유":   Math.round(space*10)/10,
       "리스크관리": Math.round(riskCtrl*10)/10,
+      "주세신선도": Math.round(freshness*10)/10,
       "섹터·그룹":  Math.round(external*10)/10,
     },
     context: {
@@ -714,6 +757,7 @@ function calcEntryScore(enriched, context = {}) {
       bb_pos:        Math.round(bbPos*1000)/10,
       rsi_reset:     Math.round(rsi*10)/10,
       adx:           Math.round(adx*10)/10,
+      freshness_bars: _biu,
     },
   };
 }

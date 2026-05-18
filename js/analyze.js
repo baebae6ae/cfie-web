@@ -8,6 +8,12 @@ let _currentATR       = 0;
 let _currentHigh22    = 0;  // 22봉 고점 (Chandelier Exit 기준)
 let _currentSwingLow5 = 0;  // 최근 5봉 저점 (스윙 저점 손절 참고)
 let _currentEMA20     = 0;
+let _currentBBUP      = 0;  // BB 상단 (저항 기반 익절 참고)
+let _currentClose     = 0;  // 현재 종가
+let _currentEntryScore= 0;
+let _currentFIS       = 0;
+let _currentFreshness = 0;
+let _currentRR        = 0;
 let _currentIsKRW     = true;
 
 // ── 초기화 ──────────────────────────────────────────────
@@ -81,6 +87,8 @@ async function loadChart(ticker) {
     // 최근 5봉 저점 (스윙 저점 손절 참고)
     _currentSwingLow5 = fisBars.slice(-5).reduce((m, b) => Math.min(m, b.low ?? Infinity), Infinity);
     if (!isFinite(_currentSwingLow5)) _currentSwingLow5 = 0;
+    _currentBBUP      = _sl?.BB_UP  || 0;
+    _currentClose     = _sl?.close  || 0;
     _currentIsKRW     = (meta?.currency || "") !== "USD";
     onAvgCostChange();
 
@@ -165,7 +173,110 @@ function onAvgCostChange() {
       slSigEl.textContent = "";
     }
   }
+
+  // ── 익절선 및 손익비 계산 ──
+  // TP1: 진입가 + ATR×2 (기계적 1차 익절 기준)
+  // TP2: ATR×4 또는 BB 상단 중 가까운 값 (중기 목표)
+  const tp1Raw = (avgCost > 0 && _currentATR > 0) ? avgCost + _currentATR * 2 : 0;
+  const _bbTarget = (_currentBBUP > 0 && _currentBBUP > avgCost + _currentATR) ? _currentBBUP : 0;
+  const tp2Raw = (avgCost > 0 && _currentATR > 0)
+    ? (_bbTarget > 0 ? Math.min(_bbTarget, avgCost + _currentATR * 4) : avgCost + _currentATR * 4)
+    : 0;
+  const tp1 = (_currentIsKRW && tp1Raw > 0) ? Math.round(tp1Raw) : +tp1Raw.toFixed(dec);
+  const tp2 = (_currentIsKRW && tp2Raw > 0) ? Math.round(tp2Raw) : +tp2Raw.toFixed(dec);
+  const tp1El    = document.getElementById("tpPrice1");
+  const tp1PctEl = document.getElementById("tpPct1");
+  const tp2El    = document.getElementById("tpPrice2");
+  const tp2PctEl = document.getElementById("tpPct2");
+  const rrEl     = document.getElementById("rrValue");
+  const rrSigEl  = document.getElementById("rrSignal");
+  if (tp1El) tp1El.textContent = tp1 > 0 ? fmt(tp1, dec) : "—";
+  if (tp1PctEl) {
+    if (tp1 > 0 && avgCost > 0) {
+      const pct = (tp1 - avgCost) / avgCost * 100;
+      tp1PctEl.textContent = "+" + pct.toFixed(1) + "%";
+      tp1PctEl.style.color = "var(--bull,#2ea043)";
+    } else tp1PctEl.textContent = "";
+  }
+  if (tp2El) tp2El.textContent = tp2 > 0 ? fmt(tp2, dec) : "—";
+  if (tp2PctEl) {
+    if (tp2 > 0 && avgCost > 0) {
+      const pct = (tp2 - avgCost) / avgCost * 100;
+      tp2PctEl.textContent = "+" + pct.toFixed(1) + "%";
+      tp2PctEl.style.color = "var(--bull,#2ea043)";
+    } else tp2PctEl.textContent = "";
+  }
+  // 손익비(R:R) = TP1까지 수익 / Chandelier 손절까지 손실
+  const stopDist = avgCost > 0 && ce > 0 ? avgCost - ce : 0;
+  const tp1Dist  = avgCost > 0 && tp1 > 0 ? tp1 - avgCost : 0;
+  const rr = stopDist > 0 && tp1Dist > 0 ? tp1Dist / stopDist : 0;
+  if (rrEl)    rrEl.textContent = rr > 0 ? rr.toFixed(2) + " : 1" : "—";
+  if (rrSigEl) {
+    if (rr > 0) {
+      rrSigEl.textContent = rr >= 2.0 ? "✓ 양호" : rr >= 1.5 ? "△ 보통" : "⚠ 불리";
+      rrSigEl.style.color = rr >= 2.0 ? "var(--bull,#2ea043)" : rr >= 1.5 ? "#d29922" : "var(--bear,#e53935)";
+    } else rrSigEl.textContent = "";
+  }
+  _currentRR = rr;
+  renderChecklist();
+  const beNote = document.getElementById("breakEvenNote");
+  if (beNote) {
+    if (avgCost > 0 && tp1 > 0) {
+      beNote.textContent = "1차 익절 도달 시 → 손절을 " + fmt(avgCost, dec) + "(진입가)으로 상향";
+      beNote.style.display = "block";
+    } else { beNote.style.display = "none"; }
+  }
+  const rrRowEl = document.getElementById("rrRow");
+  if (rrRowEl) rrRowEl.classList.toggle("rr-warn", rr > 0 && rr < 2.0);
 }
+// ── 기계적 진입 체크리스트 업데이트 ───────────────────────────
+function renderChecklist() {
+  function _upd(iconId, valId, pass, val) {
+    const ic = document.getElementById(iconId);
+    const vl = document.getElementById(valId);
+    if (ic) { ic.textContent = pass ? "☑" : "☐"; ic.style.color = pass ? "var(--bull,#2ea043)" : "var(--bear,#e53935)"; }
+    if (vl) { vl.textContent = val; vl.style.color = pass ? "var(--bull,#2ea043)" : "var(--bear,#e53935)"; }
+  }
+  const scorePass = _currentEntryScore >= 80;
+  const fisPass   = _currentFIS >= 80;
+  const freshPass = _currentFreshness >= 0;
+  const rrEntered = _currentRR > 0;
+  const rrPass    = _currentRR >= 2.0;
+  _upd("mch-score-icon","mch-score-val", scorePass,
+    _currentEntryScore > 0 ? _currentEntryScore.toFixed(0)+"점" : "—");
+  const fisStr = _currentFIS !== 0 ? (_currentFIS >= 0 ? "+" : "") + _currentFIS.toFixed(0) : "—";
+  _upd("mch-fis-icon","mch-fis-val", fisPass, fisStr);
+  const freshStr = _currentFreshness > 0 ? "+"+_currentFreshness.toFixed(1)+"pt"
+    : _currentFreshness < 0 ? _currentFreshness.toFixed(1)+"pt" : "0pt";
+  _upd("mch-fresh-icon","mch-fresh-val", freshPass, _currentEntryScore > 0 ? freshStr : "—");
+  if (!rrEntered) {
+    const ic2 = document.getElementById("mch-rr-icon");
+    const vl2 = document.getElementById("mch-rr-val");
+    if (ic2) { ic2.textContent = "☐"; ic2.style.color = "var(--text2,#888)"; }
+    if (vl2) { vl2.textContent = "평단가 입력 후"; vl2.style.color = "var(--text2,#888)"; }
+  } else {
+    _upd("mch-rr-icon","mch-rr-val", rrPass, _currentRR.toFixed(2)+" : 1");
+  }
+  const vEl = document.getElementById("mechVerdict");
+  if (!vEl) return;
+  if (_currentEntryScore === 0) { vEl.textContent = "차트 로드 후 계산"; vEl.className = "mech-verdict mech-wait"; return; }
+  const basePass = scorePass && fisPass && freshPass;
+  if (!basePass) {
+    const failed = [!scorePass&&"진입점수",!fisPass&&"FIS",!freshPass&&"신선도"].filter(Boolean);
+    vEl.textContent = "⛔ "+failed.join("·")+" 미충족 — 관망";
+    vEl.className = "mech-verdict mech-no";
+  } else if (!rrEntered) {
+    vEl.textContent = "⚡ 기본 3조건 충족 — 평단가 입력 후 R:R 확인";
+    vEl.className = "mech-verdict mech-wait";
+  } else if (!rrPass) {
+    vEl.textContent = "⛔ R:R "+_currentRR.toFixed(2)+" 불리 — 진입 포기";
+    vEl.className = "mech-verdict mech-no";
+  } else {
+    vEl.textContent = "✅ 전체 조건 충족 — 기계적 진입 가능";
+    vEl.className = "mech-verdict mech-ok";
+  }
+}
+
 // ── 종목 헤더 ────────────────────────────────────────────
 function renderStockHeader(ticker, meta, bars, judgment) {
   const n      = bars.length;
@@ -488,6 +599,7 @@ function renderChart(bars, fisBars, tf, meta) {
 
 // ── 종합 판단 사이드바 ───────────────────────────────────
 function renderJudgment(j) {
+  _currentFIS = j?.fis ?? 0;
   const _set = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
   _set("judgeL1", j.summary_l1 || "");
   _set("judgeL2", j.summary_l2 || "");
@@ -589,7 +701,8 @@ function _buildAnalysisSummary(score, comp, m, setupName, setupName2) {
   let action;
   if (score >= 80) {
     const atrNote = gapAtr > 2.5 ? `, ATR 이격(${gapAtr.toFixed(1)}) 과대한 점 감안` : "";
-    action = `→ 현재 조건 대부분 충족${atrNote}. EMA20(${gapSign}${gapPct.toFixed(1)}%) 또는 ATR×1.5 기준 손절선 확인 후 집행`;
+    const _fw = (comp['추세신선도']??0) <= -4 ? ' ⚠ 추세 후반(' + (m.freshness_bars??'?') + '봉 경과) — 기계적 백테스트 확인 필수' : '';
+    action = '→ 조건 충족' + atrNote + '. Chandelier 손절 + ATR×2 익절 설정 후 집행' + _fw;
   } else if (score >= 65) {
     const weak = [
       { name: "확인신호",   v: confirm,   thr: 16 },
@@ -630,7 +743,12 @@ function renderEntryScore(entry) {
   const structure= comp["진입구조"]   ?? 0;
   const confirm  = comp["확인신호"]   ?? 0;
   const space    = comp["저항여유"]   ?? 0;
-  const riskCtrl = comp["리스크관리"] ?? 0;
+  const riskCtrl       = comp["리스크관리"] ?? 0;
+  const freshnessScore = comp["추세신선도"] ?? 0;
+  const freshnessBars  = m.freshness_bars ?? 99;
+  _currentEntryScore = score;
+  _currentFreshness  = freshnessScore;
+  renderChecklist();
 
   // 배지 + 상태 텍스트
   const eCol = score >= 80 ? "#2ea043" : score >= 65 ? "#56d364" : score >= 50 ? "#d29922" : "#6e7681";
@@ -703,6 +821,14 @@ function renderEntryScore(entry) {
             extScore >= 0 ? "섹터·그룹 중립 — 종목 자체 모멘텀 집중" :
                             "섹터 또는 그룹 앝세 — 추가 주의",
       extra: '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + sectorTag + groupTag + '<span style="color:' + extCol + ';font-weight:700">' + extStr + 'pt</span></div>' },
+    { num:"⑨", name:"추세 신선도 (독립지표)", v: freshnessScore, max:8, ideal:"20봉 이내 최적",
+      desc: freshnessBars === 0 ? "EMA20 < EMA60 — 하락/횊보 구간, 기계적 진입 비권장" :
+            freshnessBars <= 10 ? 골든크로스 후 봉 — 추세 초반 최적 진입 구간 :
+            freshnessBars <= 20 ? 추세 진입 봉 경과 — 상승 초중반, 기계적 진입 유효 :
+            freshnessBars <= 35 ? 추세 진입 봉 경과 — 중반, 상승 여력 점검 권장 :
+            freshnessBars <= 55 ? 추세 진입 봉 경과 — 후반 경고, 추격 매수 부담 증가 :
+                                  추세 진입 봉+ 경과 — 매우 노후, 기계적 진입 자제 권장,
+      extra: <div style="color:#888;font-size:10.5px;margin-top:4px">⚡ FIS·진입점수와 독립적 — 가격·지표 레벨이 아닌 추세 시간 경과 기반</div> },
   ];
 
   const compHTML = compRows.map(r => {
@@ -825,6 +951,7 @@ function runBacktest(fisBars) {
   for (const k of keys) {
     buckets[k] = { color: COLORS[k], counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
   }
+  const mechTrades = [];
 
   for (let i = MIN_LOOKBACK; i < n - 5; i++) {
     const slice = fisBars.slice(0, i + 1);
@@ -850,8 +977,144 @@ function runBacktest(fisBars) {
     }
     buckets[key].counts.mfe++;
     if (hadMFE) buckets[key].wins.mfe++;
+
+    // ── 기계적 전략 시뮬: FIS≥80 AND 진입점수≥80 ──
+    if (score >= 80 && (fisBars[i].FIS || 0) >= 80 && i + 1 < n && i <= n - 16) {
+      const atr = fisBars[i].ATR14 || 0;
+      if (atr > 0) {
+        const high22 = fisBars.slice(Math.max(0, i - 21), i + 1).reduce((m, b) => Math.max(m, b.high || 0), 0);
+        const stopPrice = high22 - atr * 3;
+        const nextBar = fisBars[i + 1];
+        const entryPrice = nextBar ? (nextBar.open || nextBar.close || 0) : 0;
+        if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice) {
+          const tp1mech = entryPrice + atr * 2;
+          const risk = entryPrice - stopPrice;
+          let exitPrice = (fisBars[Math.min(i + 15, n - 1)]?.close || entryPrice);
+          let exitType = "기간만료";
+          for (let j = i + 1; j <= Math.min(i + 15, n - 1); j++) {
+            const bj = fisBars[j];
+            if (!bj) continue;
+            if ((bj.low || Infinity) <= stopPrice) { exitPrice = stopPrice; exitType = "손절"; break; }
+            if ((bj.high || 0) >= tp1mech)         { exitPrice = tp1mech;   exitType = "1차익절"; break; }
+          }
+          const pnlPct = (exitPrice - entryPrice) / entryPrice * 100;
+          const rrRatio = risk > 0 ? (tp1mech - entryPrice) / risk : 0;
+          mechTrades.push({ pnlPct, exitType, rrRatio });
+        }
+      }
+    }
   }
-  return buckets;
+  return { buckets, mechTrades };
+}
+
+function _renderMechBt(mechTrades) {
+  if (!mechTrades || mechTrades.length === 0) {
+    return <div class="bt-diag bt-neutral" style="margin-top:10px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580) \uc2e0\ud638 \uc5c6\uc74c \u2014 \uacfc\uac70 \ub370\uc774\ud130\uc5d0\uc11c \ub450 \uc870\uac74 \ub3d9\uc2dc \ucda9\uc871 \uad6c\uac04 \uc5c6\uc74c</div>;
+  }
+  const n = mechTrades.length;
+  const wins     = mechTrades.filter(t => t.exitType === "1\ucc28\uc775\uc808");
+  const losses   = mechTrades.filter(t => t.exitType === "\uc190\uc808");
+  const timeouts = mechTrades.filter(t => t.exitType === "\uae30\uac04\ub9cc\ub8cc");
+  const winRate   = wins.length / n;
+  const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
+  const avgLoss   = losses.length ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length : 0;
+  const totalProfit = wins.reduce((s,t)=>s+t.pnlPct,0);
+  const totalLoss   = Math.abs(losses.reduce((s,t)=>s+t.pnlPct,0));
+  const pf          = totalLoss > 0 ? totalProfit/totalLoss : (totalProfit>0 ? Infinity : 0);
+  const expectancy  = mechTrades.reduce((s,t)=>s+t.pnlPct,0)/n;
+  const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
+  const wrCol = winRate >= 0.55 ? "#2ea043" : winRate >= 0.45 ? "#d29922" : "#e53935";
+  const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
+  let verdict, verdictClass;
+  if (n < 5) {
+    verdict = \u26a0 \uc2e0\ud638 \uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4\uc801 \uc2e0\ub8b0\ub3c4 \ub099\uc74c; verdictClass = "bt-neutral";
+  } else if (pf >= 1.5 && winRate >= 0.50) {
+    verdict = \u2713 \uc190\uc775\ube44\u00b7\uc2b9\ub960 \ubaa8\ub450 \uc591\ud638 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc804\ub7b5 \uc801\uc6a9 \uac00\ub2a5; verdictClass = "bt-ok";
+  } else if (pf >= 1.0 && expectancy > 0) {
+    verdict = \u25b3 \uae30\ub300\uac12 \ud50c\ub7ec\uc2a4\uc774\ub098 \uc190\uc775\ube44 \uc57d\ud568 \u2014 \uc190\uc808 \uc5c4\uc218 \ud544\uc218; verdictClass = "bt-neutral";
+  } else {
+    verdict = \u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc9c4\uc785/\uc190\uc808 \uc804\ub7b5 \ubbf8\uc801\ud569; verdictClass = "bt-warn";
+  }
+  const pfStr = pf === Infinity ? "\u221e" : pf.toFixed(2);
+  return <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
+    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbfc (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580)</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">\uc9c4\uc785: \uc2e0\ud638 \ub2e4\uc74c\ubd09 \uc2dc\uac00 | \uc190\uc808: Chandelier(high22\u2212ATR\u00d73) | \uc775\uc808: ATR\u00d72 | \ucd5c\ub300 15\ubd09 \ubcf4\uc720</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\uc2e0\ud638\uc218 / \uc2b9(\uc775\uc808) / \ud328(\uc190\uc808)</div>
+        <div style="font-size:12px;font-weight:700">\uac74 | \uc2b9 / \ud328 / \ub9cc\ub8cc</div>
+      </div>
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\uc2b9\ub960</div>
+        <div style="font-size:14px;font-weight:800;color:">%</div>
+      </div>
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\ud3c9\uade0 \uc218\uc775 / \uc190\uc2e4</div>
+        <div style="font-size:12px;font-weight:700"><span style="color:#2ea043">+%</span> / <span style="color:#e53935">%</span></div>
+      </div>
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\uc190\uc775\ube44(PF) / \uae30\ub300\uac12</div>
+        <div style="font-size:12px;font-weight:700"><span style="color:"></span> / <span style="color:">%</span></div>
+      </div>
+    </div>
+    <div class="bt-diag "></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">\u203b \uac70\ub798\ube44\uc6a9\u00b7\uc2ac\ub9ac\ud53c\uc9c0 \ubbf8\ud3ec\ud568. \uacfc\uac70 \uc131\uacfc\uac00 \ubbf8\ub798\ub97c \ubcf4\uc7a5\ud558\uc9c0 \uc54a\uc74c</div>
+  </div>;
+}
+
+function _renderMechBt(mechTrades) {
+  if (!mechTrades || mechTrades.length === 0) {
+    return <div class="bt-diag bt-neutral" style="margin-top:10px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580) \uc2e0\ud638 \uc5c6\uc74c \u2014 \uacfc\uac70 \ub370\uc774\ud130\uc5d0\uc11c \ub450 \uc870\uac74 \ub3d9\uc2dc \ucda9\uc871 \uad6c\uac04 \uc5c6\uc74c</div>;
+  }
+  const n = mechTrades.length;
+  const wins     = mechTrades.filter(t => t.exitType === "1\ucc28\uc775\uc808");
+  const losses   = mechTrades.filter(t => t.exitType === "\uc190\uc808");
+  const timeouts = mechTrades.filter(t => t.exitType === "\uae30\uac04\ub9cc\ub8cc");
+  const winRate   = wins.length / n;
+  const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
+  const avgLoss   = losses.length ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length : 0;
+  const totalProfit = wins.reduce((s,t)=>s+t.pnlPct,0);
+  const totalLoss   = Math.abs(losses.reduce((s,t)=>s+t.pnlPct,0));
+  const pf          = totalLoss > 0 ? totalProfit/totalLoss : (totalProfit>0 ? Infinity : 0);
+  const expectancy  = mechTrades.reduce((s,t)=>s+t.pnlPct,0)/n;
+  const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
+  const wrCol = winRate >= 0.55 ? "#2ea043" : winRate >= 0.45 ? "#d29922" : "#e53935";
+  const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
+  let verdict, verdictClass;
+  if (n < 5) {
+    verdict = \u26a0 \uc2e0\ud638 \uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4\uc801 \uc2e0\ub8b0\ub3c4 \ub099\uc74c; verdictClass = "bt-neutral";
+  } else if (pf >= 1.5 && winRate >= 0.50) {
+    verdict = \u2713 \uc190\uc775\ube44\u00b7\uc2b9\ub960 \ubaa8\ub450 \uc591\ud638 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc804\ub7b5 \uc801\uc6a9 \uac00\ub2a5; verdictClass = "bt-ok";
+  } else if (pf >= 1.0 && expectancy > 0) {
+    verdict = \u25b3 \uae30\ub300\uac12 \ud50c\ub7ec\uc2a4\uc774\ub098 \uc190\uc775\ube44 \uc57d\ud568 \u2014 \uc190\uc808 \uc5c4\uc218 \ud544\uc218; verdictClass = "bt-neutral";
+  } else {
+    verdict = \u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc9c4\uc785/\uc190\uc808 \uc804\ub7b5 \ubbf8\uc801\ud569; verdictClass = "bt-warn";
+  }
+  const pfStr = pf === Infinity ? "\u221e" : pf.toFixed(2);
+  return <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
+    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbfc (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580)</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">\uc9c4\uc785: \uc2e0\ud638 \ub2e4\uc74c\ubd09 \uc2dc\uac00 | \uc190\uc808: Chandelier(high22\u2212ATR\u00d73) | \uc775\uc808: ATR\u00d72 | \ucd5c\ub300 15\ubd09 \ubcf4\uc720</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\uc2e0\ud638\uc218 / \uc2b9(\uc775\uc808) / \ud328(\uc190\uc808)</div>
+        <div style="font-size:12px;font-weight:700">\uac74 | \uc2b9 / \ud328 / \ub9cc\ub8cc</div>
+      </div>
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\uc2b9\ub960</div>
+        <div style="font-size:14px;font-weight:800;color:">%</div>
+      </div>
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\ud3c9\uade0 \uc218\uc775 / \uc190\uc2e4</div>
+        <div style="font-size:12px;font-weight:700"><span style="color:#2ea043">+%</span> / <span style="color:#e53935">%</span></div>
+      </div>
+      <div style="border:1px solid var(--border);padding:6px 8px">
+        <div style="font-size:10px;color:var(--text3)">\uc190\uc775\ube44(PF) / \uae30\ub300\uac12</div>
+        <div style="font-size:12px;font-weight:700"><span style="color:"></span> / <span style="color:">%</span></div>
+      </div>
+    </div>
+    <div class="bt-diag "></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">\u203b \uac70\ub798\ube44\uc6a9\u00b7\uc2ac\ub9ac\ud53c\uc9c0 \ubbf8\ud3ec\ud568. \uacfc\uac70 \uc131\uacfc\uac00 \ubbf8\ub798\ub97c \ubcf4\uc7a5\ud558\uc9c0 \uc54a\uc74c</div>
+  </div>;
 }
 
 function renderBacktest(fisBars) {
@@ -861,8 +1124,9 @@ function renderBacktest(fisBars) {
 
   // 비동기 실행 — UI 블로킹 방지
   setTimeout(() => {
-    const buckets = runBacktest(fisBars);
-    if (!buckets) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 86봉 필요)</div>"; return; }
+    const btResult = runBacktest(fisBars);
+    if (!btResult) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 86봉 필요)</div>"; return; }
+    const { buckets, mechTrades } = btResult;
 
     const keys = ["90+", "80-90", "65-80", "50-65", "50미만"];
 
@@ -950,6 +1214,8 @@ function renderBacktest(fisBars) {
       <b>점수↑=MFE↑</b>가 확인되면 이 종목에서 지표 변별력이 유효합니다.
     </div>`
 
+    html += _renderMechBt(mechTrades);
+    html += _renderMechBt(mechTrades);
     el.innerHTML = html;
   }, 10);
 }
