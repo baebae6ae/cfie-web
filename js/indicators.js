@@ -96,6 +96,127 @@ function _rollingMin(values, period, minPeriods = 1) {
   return result;
 }
 
+
+// ── 종목 → 섹터 매핑 ─────────────────────────────────────────────────────────
+const STOCK_SECTOR_MAP = {
+  // 반도체
+  "005930.KS":"반도체","000660.KS":"반도체","009150.KS":"반도체",
+  "042700.KQ":"반도체","099520.KQ":"반도체","000990.KS":"반도체",
+  "058470.KQ":"반도체","240810.KQ":"반도체","036930.KQ":"반도체",
+  "034220.KS":"반도체",
+  // 자동차
+  "005380.KS":"자동차","000270.KS":"자동차","012330.KS":"자동차",
+  "011210.KS":"자동차","018880.KS":"자동차","204320.KS":"자동차",
+  // 화학배터리
+  "051910.KS":"화학·배터리","006400.KS":"화학·배터리","096770.KS":"화학·배터리",
+  "247540.KQ":"화학·배터리","086520.KQ":"화학·배터리","003670.KS":"화학·배터리",
+  "066970.KQ":"화학·배터리",
+  // 금융
+  "055550.KS":"금융","086790.KS":"금융","105560.KS":"금융",
+  "024110.KS":"금융","316140.KS":"금융","032830.KS":"금융","000810.KS":"금융",
+  // IT플랫폼
+  "035420.KS":"IT·플랫폼","035720.KS":"IT·플랫폼","018260.KS":"IT·플랫폼",
+  "017670.KS":"IT·플랫폼","030200.KS":"IT·플랫폼","032640.KS":"IT·플랫폼",
+  // 에너지
+  "010950.KS":"에너지","015760.KS":"에너지","034020.KS":"에너지",
+  "036460.KS":"에너지","078930.KS":"에너지",
+  // 소재산업재
+  "005490.KS":"소재·산업재","028260.KS":"소재·산업재","003550.KS":"소재·산업재",
+  "267270.KS":"소재·산업재","064350.KS":"소재·산업재","012450.KS":"소재·산업재",
+  "003490.KS":"소재·산업재","011200.KS":"소재·산업재",
+  // 바이오헬스
+  "207940.KS":"바이오·헬스","068270.KS":"바이오·헬스","128940.KS":"바이오·헬스",
+  "000100.KS":"바이오·헬스","145020.KQ":"바이오·헬스","196170.KQ":"바이오·헬스",
+  "285130.KQ":"바이오·헬스",
+  // 게임엔터
+  "036570.KS":"게임·엔터","259960.KS":"게임·엔터","352820.KS":"게임·엔터",
+  "263750.KQ":"게임·엔터","041510.KQ":"게임·엔터","035900.KQ":"게임·엔터",
+  "293480.KQ":"게임·엔터","112040.KQ":"게임·엔터","251270.KQ":"게임·엔터",
+  // 소부장
+  "357780.KQ":"소부장","140860.KQ":"소부장","095340.KQ":"소부장",
+  "211270.KQ":"소부장","039030.KQ":"소부장","056190.KQ":"소부장",
+  "084370.KQ":"소부장","131970.KS":"소부장",
+  // US Tech
+  "AAPL":"Tech","MSFT":"Tech","NVDA":"Tech","AVGO":"Tech","ORCL":"Tech",
+  "AMD":"Tech","INTC":"Tech","CRM":"Tech","TSM":"Tech","QCOM":"Tech",
+  "MU":"Tech","AMAT":"Tech",
+  // US Communication
+  "GOOGL":"Communication","META":"Communication","NFLX":"Communication",
+  "DIS":"Communication","T":"Communication","VZ":"Communication","CMCSA":"Communication",
+  // US Consumer
+  "AMZN":"Consumer","TSLA":"Consumer","HD":"Consumer","COST":"Consumer",
+  "WMT":"Consumer","KO":"Consumer","PEP":"Consumer","NKE":"Consumer","SBUX":"Consumer",
+  // US Finance
+  "JPM":"Finance","V":"Finance","MA":"Finance","BAC":"Finance",
+  "GS":"Finance","MS":"Finance","AXP":"Finance",
+  // US Healthcare
+  "UNH":"Healthcare","LLY":"Healthcare","JNJ":"Healthcare","ABBV":"Healthcare",
+  "MRK":"Healthcare","PFE":"Healthcare","AMGN":"Healthcare","GILD":"Healthcare",
+  // US Energy
+  "XOM":"Energy","CVX":"Energy","COP":"Energy","SLB":"Energy",
+  // US Industrial
+  "CAT":"Industrial","BA":"Industrial","HON":"Industrial",
+  "LMT":"Industrial","RTX":"Industrial","GE":"Industrial",
+};
+
+// ── 종목 → 그룹 매핑 (KR 재벌/대기업 그룹) ────────────────────────────────
+const STOCK_GROUP_MAP = {
+  // 삼성그룹
+  "005930.KS":"삼성","009150.KS":"삼성","207940.KS":"삼성",
+  "028260.KS":"삼성","032830.KS":"삼성","000810.KS":"삼성",
+  "018260.KS":"삼성","006400.KS":"삼성","034220.KS":"삼성",
+  // SK그룹
+  "000660.KS":"SK","096770.KS":"SK","017670.KS":"SK","285130.KQ":"SK",
+  // LG그룹
+  "051910.KS":"LG","003550.KS":"LG","032640.KS":"LG",
+  // 현대차그룹
+  "005380.KS":"현대차","000270.KS":"현대차","012330.KS":"현대차",
+  "011210.KS":"현대차","018880.KS":"현대차","064350.KS":"현대차",
+  // HD현대그룹
+  "267270.KS":"HD현대",
+  // 포스코그룹
+  "005490.KS":"포스코","003670.KS":"포스코",
+  // 한화그룹
+  "000880.KS":"한화","012450.KS":"한화",
+  // 두산그룹
+  "000150.KS":"두산","034020.KS":"두산",
+  // 카카오그룹
+  "035720.KS":"카카오","293480.KQ":"카카오",
+  // NAVER
+  "035420.KS":"NAVER",
+};
+
+// ── 섹터 ETF 프록시 ────────────────────────────────────────────────────────
+const SECTOR_ETFS = {
+  "반도체":    "091160.KS",
+  "자동차":    "091180.KS",
+  "화학·배터리":"117460.KS",
+  "금융":      "139270.KS",
+  "IT·플랫폼": "266370.KS",
+  "바이오·헬스":"244580.KS",
+  "Tech":         "XLK",
+  "Communication":"XLC",
+  "Consumer":     "XLY",
+  "Finance":      "XLF",
+  "Healthcare":   "XLV",
+  "Energy":       "XLE",
+  "Industrial":   "XLI",
+};
+
+// ── 그룹 대표 종목 (그룹 추세 계산용, 2~3개) ──────────────────────────────
+const GROUP_REP_STOCKS = {
+  "삼성":  ["005930.KS","207940.KS"],
+  "SK":    ["000660.KS","096770.KS"],
+  "LG":    ["051910.KS","003550.KS"],
+  "현대차": ["005380.KS","000270.KS"],
+  "HD현대": ["267270.KS"],
+  "포스코": ["005490.KS","003670.KS"],
+  "한화":  ["000880.KS","012450.KS"],
+  "두산":  ["034020.KS"],
+  "카카오": ["035720.KS"],
+  "NAVER": ["035420.KS"],
+};
+
 // ── calcIndicators  (engine/data.py::calc_indicators 완전 포팅) ──────────
 function calcIndicators(bars) {
   const n = bars.length;
@@ -401,7 +522,7 @@ function calcFIS(enriched) {
 }
 
 // ── calcEntryScore (engine/fis.py::calc_entry_score 완전 포팅) ──────────
-function calcEntryScore(enriched) {
+function calcEntryScore(enriched, context = {}) {
   const n   = enriched.length;
   const row = enriched[n-1];
   const fis      = _fnum(row.FIS);
@@ -537,9 +658,29 @@ function calcEntryScore(enriched) {
   if (adx>=18) riskCtrl+=3;
   riskCtrl = _clip(riskCtrl, 0, 16);
 
-  // 합산 → 정규화 /1.18
+  // ⑥ 섹터·그룹 추세 (-6~12): base score 위에 overlay로 적용 (기존 보정값 유지)
+  const { sectorFIS, groupFIS } = context;
+  let external = 0;
+  if (sectorFIS != null && isFinite(sectorFIS)) {
+    if      (sectorFIS >= 40) external += 5;
+    else if (sectorFIS >= 15) external += 3;
+    else if (sectorFIS >=  0) external += 1;
+    else if (sectorFIS < -20) external -= 4;
+    else                      external -= 1;
+  }
+  if (groupFIS != null && isFinite(groupFIS)) {
+    if      (groupFIS >= 40) external += 4;
+    else if (groupFIS >= 15) external += 2;
+    else if (groupFIS >=  0) external += 1;
+    else if (groupFIS < -20) external -= 3;
+    else                     external -= 1;
+  }
+  external = _clip(external, -6, 12);
+
+  // 합산 → 정규화 /1.22 (기존 동일) + 섹터·그룹 overlay
   const rawTotal = ctx + setupQuality + trigger + space + riskCtrl;
-  const total    = _clip(Math.round(rawTotal/1.22), 0, 100);  // max raw ~122 (trigger 28+)
+  const base     = _clip(Math.round(rawTotal/1.22), 0, 100);  // max raw ~122
+  const total    = _clip(base + external, 0, 100);
   let label;
   if (total>=80) label="최적 진입 구간";
   else if (total>=65) label="양호한 진입 구간";
@@ -556,6 +697,13 @@ function calcEntryScore(enriched) {
       "확인신호":   Math.round(trigger*10)/10,
       "저항여유":   Math.round(space*10)/10,
       "리스크관리": Math.round(riskCtrl*10)/10,
+      "섹터·그룹":  Math.round(external*10)/10,
+    },
+    context: {
+      sectorName: context.sectorName ?? null,
+      groupName:  context.groupName  ?? null,
+      sectorFIS:  sectorFIS ?? null,
+      groupFIS:   groupFIS  ?? null,
     },
     metrics: {
       ema20_gap_pct: Math.round(gapPct*100)/100,

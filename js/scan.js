@@ -39,11 +39,31 @@ function selectMarket(market) {
 }
 
 // ── 스캔 로직 (전체 종목 순회 및 비차단 상호작용) ──────────────
+// 섹터 ETF FIS 캐시 (스캔 시작 시 1회 조회)
+const _sectorFISCache = {};
+
+async function _prefetchSectorETFs() {
+  if (typeof SECTOR_ETFS === "undefined" || typeof calcFIS === "undefined") return;
+  const entries = Object.entries(SECTOR_ETFS);
+  await Promise.allSettled(entries.map(async ([sectorName, etfTicker]) => {
+    try {
+      const { bars } = await fetchOHLCV(etfTicker, "3mo", "1d");
+      if (bars?.length > 20) {
+        const e = calcFIS(calcIndicators(bars));
+        _sectorFISCache[sectorName] = e[e.length - 1].FIS;
+      }
+    } catch {}
+  }));
+  console.log("[scan] sector ETF cache:", Object.keys(_sectorFISCache).map(k => k + "=" + (_sectorFISCache[k]?.toFixed(0) ?? "?")).join(", "));
+}
+
 async function doScan() {
   if (_scanning) return;
   _scanning = true;
   _stopScan = false;
   _results  = [];
+  // 섹터 ETF 사전 조회 (FIS context용)
+  await _prefetchSectorETFs();
 
   const scanBtn = document.getElementById("scanBtn");
   const stopBtn = document.getElementById("stopScanBtn");
@@ -204,7 +224,12 @@ function _analyzeFis(ticker, name, bars) {
   if (risk  <= FIS_FILTER.risk)   return null;  // risk > -16
   if (trend <= FIS_FILTER.trend)  return null;  // trend > 0
 
-  const entryData = calcEntryScore(fisBars);
+  // 섹터 context
+  const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
+  const _scanSectorFIS  = _scanSectorName != null ? (_sectorFISCache[_scanSectorName] ?? null) : null;
+  const _scanContext    = { sectorName: _scanSectorName, sectorFIS: _scanSectorFIS };
+
+  const entryData = calcEntryScore(fisBars, _scanContext);
   if (!entryData) return null;
   const entry = entryData.score ?? 0;
 

@@ -35,8 +35,33 @@ async function loadChart(ticker) {
   try {
     const tf     = document.getElementById("timeframeSelect")?.value || "1d";
     const period = document.getElementById("periodSelect")?.value    || "2y";
-    const { bars, meta } = await fetchOHLCV(_currentTicker, period, tf);
-    
+    // 섹터·그룹 컨텍스트 감지
+    const _sn = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[_currentTicker] : null;
+    const _gn = (typeof STOCK_GROUP_MAP  !== "undefined") ? STOCK_GROUP_MAP[_currentTicker]  : null;
+    const _sectorEtf  = (_sn && typeof SECTOR_ETFS      !== "undefined") ? SECTOR_ETFS[_sn]      : null;
+    const _groupReps  = (_gn && typeof GROUP_REP_STOCKS  !== "undefined")
+      ? (GROUP_REP_STOCKS[_gn] || []).filter(t => t !== _currentTicker).slice(0, 2) : [];
+
+    // 메인 + 섹터 ETF + 그룹 대표주 병렬 fetch
+    const _allFetches = [
+      fetchOHLCV(_currentTicker, period, tf),
+      _sectorEtf ? fetchOHLCV(_sectorEtf, "6mo", "1d").catch(() => null) : Promise.resolve(null),
+      ..._groupReps.map(t => fetchOHLCV(t, "6mo", "1d").catch(() => null)),
+    ];
+    const [_mainRes, _sectorRes, ..._groupRes] = await Promise.all(_allFetches);
+    const { bars, meta } = _mainRes;
+
+    // 섹터·그룹 FIS 계산
+    const _entryContext = { sectorName: _sn, groupName: _gn };
+    if (_sectorRes?.bars?.length > 30) {
+      const _se = calcFIS(calcIndicators(_sectorRes.bars));
+      _entryContext.sectorFIS = _se[_se.length - 1].FIS;
+    }
+    const _gFISArr = _groupRes
+      .filter(r => r?.bars?.length > 30)
+      .map(r => { const _e = calcFIS(calcIndicators(r.bars)); return _e[_e.length - 1].FIS; });
+    if (_gFISArr.length) _entryContext.groupFIS = _gFISArr.reduce((a, b) => a + b, 0) / _gFISArr.length;
+
     if (!bars.length) { 
       showToast("데이터 없음", "error"); 
       overlay.style.display="none"; 
@@ -59,7 +84,7 @@ async function loadChart(ticker) {
     _currentIsKRW     = (meta?.currency || "") !== "USD";
     onAvgCostChange();
 
-    const entry    = calcEntryScore(fisBars);
+    const entry    = calcEntryScore(fisBars, _entryContext);
     const judgment = makeJudgment(fisBars);
 
     // [중요 수정] 차트를 그리기 전에 화면에 먼저 표시해야 정확한 너비 계산이 가능함
@@ -642,6 +667,14 @@ function renderEntryScore(entry) {
     "모멘텀 지속": "정배열(EMA10>20>60) 강세 추세에서 지속 상승. ROC·거래량 강세 유지가 핵심.",
     "반전 초기":   "과매도 후 바닥 반전 초기 신호. MACD 반전 + RSI 저점 반등 + 거래량 증가 확인.",
   };
+  // 섹터·그룹 컨텍스트 표시
+  const ctx_obj    = entry?.context || {};
+  const extScore   = comp["섹터·그룹"] ?? null;
+  const sectorTag  = ctx_obj.sectorName ? `<span class="es-ctx-tag">${ctx_obj.sectorName}</span>` : "";
+  const groupTag   = ctx_obj.groupName  ? `<span class="es-ctx-tag">${ctx_obj.groupName}그룹</span>` : '<span class="es-ctx-tag es-ctx-none">독립/해당없음</span>';
+  const extStr     = extScore != null ? (extScore >= 0 ? "+" : "") + extScore.toFixed(0) : "—";
+  const extCol     = extScore == null ? "#888" : extScore > 0 ? "#56d364" : extScore < 0 ? "#e53935" : "#888";
+
   const setupChips = Object.entries(setupScores)
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => {
@@ -662,6 +695,14 @@ function renderEntryScore(entry) {
       desc: space>=12?"52주·BB 상단 여유 충분 — 저항 부담 낮음":space>=6?"적정 상승 공간 확인":space>=0?"일부 저항 부담 있음":"상단 저항 과부담 — 추격 불리" },
     { num:"⑤", name:"리스크 관리", v:riskCtrl, max:16, ideal:"10 이상 최적",
       desc: riskCtrl>=12?"과열 없고 손절 거리 적정 — 위험 관리 양호":riskCtrl>=8?"리스크 통제 가능 수준":riskCtrl>=4?"일부 위험 요소 — 손절 기준 명확히 설정":"ATR 이격 크거나 위험 감점 높음" },
+    { num:"⑦", name:"섹터·그룹 추세", v: extScore ?? 0, max:12,
+      ideal:"섹터 ETF FIS 기반",
+      desc: extScore == null ? "섹터/그룹 정보 없음 (메핑에 없는 종목)" :
+            extScore >= 8 ? "섹터·그룹 모두 강세 — 추세력 듹반 효과" :
+            extScore >= 3 ? "섹터 또는 그룹 업종 추세 양호" :
+            extScore >= 0 ? "섹터·그룹 중립 — 종목 자체 모멘텀 집중" :
+                            "섹터 또는 그룹 앝세 — 추가 주의",
+      extra: '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + sectorTag + groupTag + '<span style="color:' + extCol + ';font-weight:700">' + extStr + 'pt</span></div>' },
   ];
 
   const compHTML = compRows.map(r => {
