@@ -220,7 +220,7 @@ function _analyzeFis(ticker, name, bars) {
   const fis = judgment.fis ?? 0;
 
   // 기계적 진입 조건 1: FIS >= 65 (max raw~99 기준 강한 추세)
-  if (fis < 65) return null;   // FIS>=65: max raw~99 ?? ?? ?? (??~20%)
+  if (fis < 60) return null;   // FIS>=60: ?? ?? ?? (??~20%)
 
   // 섹터 context
   const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
@@ -232,11 +232,11 @@ function _analyzeFis(ticker, name, bars) {
   const entry = entryData.score ?? 0;
 
   // 기계적 진입 조건 2: 통합 진입 점수 >= 70 (양호한 진입 구간)
-  if (entry < 70) return null;  // Entry>=70: ??? ?? ??
+  if (entry < 65) return null;  // Entry>=65: 
 
-  // 기계적 진입 조건 3: 추세 신선도 >= 0 (추세 경과 봉수 <= 35)
+  // ???? entry score? ?? ??(-8~+8) ? hard filter ?? (FIS>=60 ??? EMA20>EMA60 ?? ???? biu? ??? ??)
   const biu = entryData.metrics?.freshness_bars ?? 0;
-  if (biu > 45) return null;   // 45?(~9?) ??
+  // (biu > N hard filter ?? ? entry score? ???? biu>55 ?? -8? ??)
 
   const close_v  = last.close  ?? last.Close  ?? 0;
   const ema20_v  = last.EMA20  ?? close_v;
@@ -686,30 +686,29 @@ function renderKumoCard(c) {
       // [1] FIS >= 65 (fast pre-filter)
       const row = fisBars[i];
       const fis = row.FIS ?? 0;
-      if (fis < 80) continue;
+      if (fis < 60) continue;   // ?? ??? ??
 
       // [2] Entry score >= 80 + [3] Freshness check
       const entryData = calcEntryScore(fisBars.slice(0, i + 1));
       if (!entryData) continue;
       const entry = entryData.score ?? 0;
-      if (entry < 80) continue;
-      const biu = entryData.metrics?.freshness_bars ?? 0;
-      if (biu > 35) continue;
+      if (entry < 65) continue;  // ?? ??? ??
+      const biu = entryData.metrics?.freshness_bars ?? 0;  // hard filter ??
 
       const close = row.close ?? row.Close ?? 0;
       const atr   = row.ATR14 ?? 0;
       if (!close || !atr) continue;
 
-      // [4] R:R >= 2.0 (current price based)
-      const high22 = fisBars.slice(Math.max(0, i - 21), i + 1)
-        .reduce((m, b) => Math.max(m, b.high ?? b.High ?? 0), -Infinity);
-      const slDist = close - (high22 - atr * 3);
-      if (slDist <= 0) continue;
-      const rrCalc = (atr * 4) / slDist;
-      if (rrCalc < 2.0) continue;
+      // [3] R:R >= 1.5 (EMA20 ??? ?? ? ?? ??? ??)
+      const ema20bt = row.EMA20 ?? close;
+      const btStop  = ema20bt - atr;
+      const btRisk  = close - btStop;
+      if (btRisk <= 0) continue;
+      const rrCalc  = (atr * 3) / btRisk;
+      if (rrCalc < 1.5) continue;
 
       // \uC2E0\uD638 \uBC1C\uACAC! \uAE30\uACC4\uC801 \uC804\uB7B5 \uC2DC\uBBAC\uB808\uC774\uC158
-      const stopLoss = high22 - atr * 3;
+      const stopLoss = ema20bt - atr;   // EMA20 ?? ??
       const tp1      = close + atr * 2;
       const tp2      = close + atr * 3;
 
