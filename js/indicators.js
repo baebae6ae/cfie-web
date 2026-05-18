@@ -520,21 +520,6 @@ function _barsInCurrentUptrend(enriched, idx) {
   return cnt;
 }
 
-// ── 추세 신선도: EMA20>EMA60 구간 지속 봉 수 (독립 지표) ──────────────
-// FIS/진입점수와 달리 가격·지표 레벨이 아닌 추세 경과 시간만 측정
-function _barsInCurrentUptrend(enriched, idx) {
-  let cnt = 0;
-  for (let k = idx; k >= 0; k--) {
-    const e20 = _fnum(enriched[k].EMA20, NaN);
-    const e60 = _fnum(enriched[k].EMA60, NaN);
-    if (isNaN(e20) || isNaN(e60)) break;
-    if (e20 <= e60) break;
-    cnt++;
-    if (cnt >= 80) break;
-  }
-  return cnt;
-}
-
 // ── calcFIS (engine/fis.py::calc_fis 완전 포팅) ──────────────────────────
 function calcFIS(enriched) {
   return enriched.map((row, i) => {

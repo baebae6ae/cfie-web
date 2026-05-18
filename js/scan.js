@@ -219,8 +219,8 @@ function _analyzeFis(ticker, name, bars) {
 
   const fis = judgment.fis ?? 0;
 
-  // 기계적 진입 조건 1: FIS >= 80
-  if (fis < 80) return null;
+  // 기계적 진입 조건 1: FIS >= 65 (max raw~99 기준 강한 추세)
+  if (fis < 65) return null;   // FIS>=65: max raw~99 ?? ?? ?? (??~20%)
 
   // 섹터 context
   const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
@@ -231,31 +231,31 @@ function _analyzeFis(ticker, name, bars) {
   if (!entryData) return null;
   const entry = entryData.score ?? 0;
 
-  // 기계적 진입 조건 2: 통합 진입 점수 >= 80 (FIS·신선도·구조 모두 반영)
-  if (entry < 80) return null;
+  // 기계적 진입 조건 2: 통합 진입 점수 >= 70 (양호한 진입 구간)
+  if (entry < 70) return null;  // Entry>=70: ??? ?? ??
 
   // 기계적 진입 조건 3: 추세 신선도 >= 0 (추세 경과 봉수 <= 35)
   const biu = entryData.metrics?.freshness_bars ?? 0;
-  if (biu > 35) return null;
+  if (biu > 45) return null;   // 45?(~9?) ??
 
   const close_v  = last.close  ?? last.Close  ?? 0;
   const ema20_v  = last.EMA20  ?? close_v;
   const atr_v    = last.ATR14  ?? 0;
   const high20_v = fisBars.slice(-20).reduce((m, b) =>
     Math.max(m, b.high ?? b.High ?? 0), -Infinity);
-  const high22_v = fisBars.slice(-22).reduce((m, b) =>
-    Math.max(m, b.high ?? b.High ?? 0), -Infinity);
   const ema20_gap = ema20_v > 0
     ? Math.round(((close_v - ema20_v) / ema20_v * 100) * 10) / 10
     : 0;
 
   // 기계적 진입 조건 4: 현재가 기준 R:R >= 2.0
-  // 손절 = Chandelier (22봉 고점 - ATR×3), 목표 = ATR×4 (2차 익절)
-  const _slDist = close_v - (high22_v - atr_v * 3);
-  const rr_val  = (_slDist > 0 && atr_v > 0)
-    ? Math.round((atr_v * 4 / _slDist) * 100) / 100
+  // 진입손절 = EMA20-ATR×1 (추세 지지선 기준), 목표 = ATR×3
+  // ???? = EMA20-ATR, ?? = ???+ATR?3
+  const _ema_stop = ema20_v - atr_v;
+  const _rr_risk  = close_v - _ema_stop;  // = (close-EMA20)+ATR >= ATR
+  const rr_val    = (_rr_risk > 0 && atr_v > 0)
+    ? Math.round((atr_v * 3) / _rr_risk * 100) / 100
     : 0;
-  if (rr_val < 2.0) return null;
+  if (rr_val < 1.5) return null;
 
   const entry_components   = entryData.components    || {};
   const entry_setup_scores = entryData.setup_scores  || {};
@@ -483,7 +483,7 @@ function _toWeekly(bars) {
 function renderFisCard(c, idx) {
   const col    = fisColor(c.fis);
   const eScore = c.entry_score ?? 0;
-  const eCol   = eScore >= 80 ? "#2ea043" : eScore >= 65 ? "#56d364" : eScore >= 50 ? "#d29922" : "#6e7681";
+  const eCol   = eScore >= 70 ? "#2ea043" : eScore >= 60 ? "#56d364" : eScore >= 50 ? "#d29922" : "#6e7681";
   const tCls   = c.trend >= 10 ? "pos" : "neg";
   const mCls   = c.momentum >= 5 ? "pos" : c.momentum < 0 ? "neg" : "";
   const pf     = _market === "us" ? "" : "₩";
@@ -683,7 +683,7 @@ function renderKumoCard(c) {
     for (let i = MIN_LB; i < n - 26; i++) {
       if (i < skipUntil) continue;
 
-      // [1] FIS >= 80 (fast pre-filter)
+      // [1] FIS >= 65 (fast pre-filter)
       const row = fisBars[i];
       const fis = row.FIS ?? 0;
       if (fis < 80) continue;
