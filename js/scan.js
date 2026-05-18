@@ -147,6 +147,9 @@ async function doScan() {
         ? `${label} 전체 분석 완료 (체류기간 순)`
         : `${label} 전체 분석 완료 (점수 순)`;
     }
+    // 코스닥 경고 표시/숨김 (백테스트 근거)
+    const kosdaqWarnEl = document.getElementById("kosdaqWarn");
+    if (kosdaqWarnEl) kosdaqWarnEl.style.display = (_market === "kosdaq" && _scanType === "fis") ? "block" : "none";
     // 스캔 결과 sessionStorage에 저장 (페이지 이동 후 복귀 시 유지)
     if (!_stopScan && _results.length > 0) {
       try {
@@ -250,6 +253,19 @@ function _analyzeFis(ticker, name, bars) {
   // 기계적 진입 조건 4: 현재가 기준 R:R >= 2.0
   // 진입손절 = EMA20-ATR×1 (추세 지지선 기준), 목표 = ATR×3
   // ???? = EMA20-ATR, ?? = ???+ATR?3
+  const gap_atr_v = atr_v > 0 ? (close_v - ema20_v) / atr_v : 0;
+
+  // ???? ??: gap_atr<0.3 = EMA20 ? ?? ??? (?? ?? ?? ??)
+  // gap_atr>1.0 = R:R<1.5? ?? ??? ? ?? ?? ??: 0.3~1.0
+  if (gap_atr_v < 0.3) return null;
+
+  // RSI ?? ??: ?? 8? ? RSI?52 ?? ?? (???) ? ?? RSI ??
+  // ???? ??: ??? ?? ??? ?? ?? ??? ??? ??
+  const rsiHistory = fisBars.slice(-9, -1).map(b => b.RSI14 ?? 0).filter(r => r > 0);
+  const hadPullback = rsiHistory.some(r => r <= 54);
+  const rsi_now = last.RSI14 ?? 0;
+  if (!hadPullback || rsi_now < 46) return null;
+
   const _ema_stop = ema20_v - atr_v;
   const _rr_risk  = close_v - _ema_stop;  // = (close-EMA20)+ATR >= ATR
   const rr_val    = (_rr_risk > 0 && atr_v > 0)
@@ -707,40 +723,22 @@ function renderKumoCard(c) {
       const rrCalc  = (atr * 3) / btRisk;
       if (rrCalc < 1.5) continue;
 
-      // \uC2E0\uD638 \uBC1C\uACAC! \uAE30\uACC4\uC801 \uC804\uB7B5 \uC2DC\uBBAC\uB808\uC774\uC158
-      const stopLoss = ema20bt - atr;   // EMA20 ?? ??
-      const tp1      = close + atr * 2;
-      const tp2      = close + atr * 3;
+      // ?? ??! ??? ?? ????? (Mode C: TP2 ?? ??, ?? ??? ??)
+      // ???? ??: TP1?BE ??(PF=0.90) < TP2?? ??(PF=1.00)
+      const stopLoss = ema20bt - atr;   // EMA20-ATR ??
+      const tp2      = close + atr * 3; // 3R ??
 
-      let result      = "timeout";
-      let tp1Hit      = false;
-      let activeStop  = stopLoss;
+      let result = "timeout";
 
       for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
         const bar  = fisBars[j];
         const high = bar.high ?? bar.High ?? bar.close;
         const low  = bar.low  ?? bar.Low  ?? bar.close;
 
-        // \uC190\uC808 \uBA3C\uC800 \uD655\uC778 (\uC77C\uC911 \uCD5C\uC545 \uC2DC\uB098\uB9AC\uC624)
-        if (low <= activeStop) {
-          result = tp1Hit ? "be_stop" : "stop";
-          break;
-        }
-        // TP1 \uD655\uC778
-        if (!tp1Hit && high >= tp1) {
-          tp1Hit     = true;
-          activeStop = close;  // \uC190\uC808 \uC9C4\uC785\uAC00\uB85C \uC0C1\uD5A5
-        }
-        // TP2 \uD655\uC778
-        if (high >= tp2) {
-          result = "tp2";
-          break;
-        }
-        if (j === Math.min(i + 25, n - 1)) {
-          result = tp1Hit ? "tp1_exit" : "timeout";
-        }
+        if (low <= stopLoss) { result = "stop"; break; }
+        if (high >= tp2)     { result = "tp2";  break; }
+        if (j === Math.min(i + 25, n - 1)) result = "timeout";
       }
-
       trades.push({ result });
       skipUntil = i + 5;  // \uC2E0\uD638 \uC911\uBCF5 \uBC29\uC9C0
     }
@@ -750,41 +748,33 @@ function renderKumoCard(c) {
       btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    const total   = trades.length;
-    const nTp2    = trades.filter(t => t.result === "tp2").length;
-    const nTp1    = trades.filter(t => t.result === "tp1_exit").length;
-    const nBeStop = trades.filter(t => t.result === "be_stop").length;
-    const nStop   = trades.filter(t => t.result === "stop").length;
-    const nTimeout= trades.filter(t => t.result === "timeout").length;
+    const total    = trades.length;
+    const nTp2     = trades.filter(t => t.result === "tp2").length;
+    const nStop    = trades.filter(t => t.result === "stop").length;
+    const nTimeout = trades.filter(t => t.result === "timeout").length;
 
-    // R \uACC4\uC0B0: TP2=+3R, TP1\uD6C4\uCCAD\uC0B0\u22481.5R(1/2@TP1, 1/2@\uD604\uAC00\u2248+1R), BE\uC190\uC808\u22481R, \uC190\uC808=-1R, \uD0C0\uC784\uC544\uC6C3=0R
-    const totalR =
-      nTp2    * 3.0 +
-      nTp1    * 1.5 +
-      nBeStop * 1.0 +
-      nStop   * (-1.0);
-    const avgR    = totalR / total;
-    const winRate = (nTp2 + nTp1 + nBeStop) / total * 100;
+    // Mode C R ??: TP2=+3R, ??=-1R, timeout=0R (TP1/BE ??)
+    const totalR = nTp2 * 3.0 + nStop * (-1.0);
+    const avgR   = totalR / total;
+    const winRate = nTp2 / total * 100;
 
-    const pc   = (cnt) => total ? (cnt / total * 100).toFixed(0) + "%" : "\u2014";
+    const pc   = (cnt) => total ? (cnt / total * 100).toFixed(0) + "%" : "—";
     const rCol = avgR >= 0.5 ? "#2ea043" : avgR >= 0 ? "#d29922" : "#e53935";
-    const wCol = winRate >= 50 ? "#2ea043" : winRate >= 35 ? "#d29922" : "#e53935";
+    const wCol = winRate >= 40 ? "#2ea043" : winRate >= 30 ? "#d29922" : "#e53935";
     const diag = avgR >= 0.5
       ? "bt-ok"
       : avgR >= 0 ? "bt-warn" : "bt-bad";
     const diagTxt = avgR >= 0.5
-      ? "\u2713 \uC804\uB7B5 \uC720\uD6A8 \u2014 \uC9C4\uC785 \uADFC\uAC70 \uC788\uC74C"
-      : avgR >= 0 ? "\u26A0 \uACBD\uACC4\uC120, \uC8FC\uC758 \uD544\uC694"
-      : "\u26D4 \uC774 \uC885\uBAA9\uC740 \uC804\uB7B5 \uBE44\uD6A8";
+      ? "✓ 전략 유효 — 진입 근거 있음"
+      : avgR >= 0 ? "⚠ 경계선, 주의 필요"
+      : "⛔ 이 종목은 전략 비효";
 
-    let h = `<div class="scan-bt-note">\uAE30\uACC4\uC801 \uC804\uB7B5 \uC2DC\uBBAC\uB808\uC774\uC158 \u00B7 ${total}\uAC74 \uC2E0\uD638 \u00B7 \uC190\uC808=ChandelierStop \u00B7 \uD0C0\uAC9F=ATR\u00D72/3 \u00B7 25\uBD09\uBCF4\uC720</div>`;
-    h += `<div class="scan-bt-hd"><span>\uACB0\uACFC</span><span>\uAC74\uC218</span><span>\uBE44\uC728</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#2ea043;font-weight:700">2\uCC28 \uC775\uC808 (TP2)</span><span>${nTp2}</span><span>${pc(nTp2)}</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#56d364">1\uCC28 \uD6C4 \uCCA9\uC0B0</span><span>${nTp1}</span><span>${pc(nTp1)}</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#d29922">1\uCC28 \uD6C4 \uBCF8\uC804 \uC190\uC808</span><span>${nBeStop}</span><span>${pc(nBeStop)}</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#e53935">\uC2E4\uC190\uC808</span><span>${nStop}</span><span>${pc(nStop)}</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#888">25\uBD09 \uCCAD\uC0B0</span><span>${nTimeout}</span><span>${pc(nTimeout)}</span></div>`;
-    h += `<div class="scan-bt-diag ${diag}">\uC2B9\uB960 <b style="color:${wCol}">${winRate.toFixed(0)}%</b> &nbsp;\u00B7&nbsp; \uD3C9\uADE0 R <b style="color:${rCol}">${avgR >= 0 ? "+" : ""}${avgR.toFixed(2)}R</b> &nbsp;\u2014&nbsp; ${diagTxt}</div>`;
+    let h = `<div class="scan-bt-note">기계적 전략 시민 · ${total}건 신호 · 손절=EMA20−ATR · 목표=ATR×3 · 25봉 보유 (TP1후 BE트레일 없음)</div>`;
+    h += `<div class="scan-bt-hd"><span>결과</span><span>건수</span><span>비율</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#2ea043;font-weight:700">3R 익절 (TP2)</span><span>${nTp2}</span><span>${pc(nTp2)}</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#e53935">실손절</span><span>${nStop}</span><span>${pc(nStop)}</span></div>`;
+    h += `<div class="scan-bt-row"><span style="color:#888">25봉 첩산</span><span>${nTimeout}</span><span>${pc(nTimeout)}</span></div>`;
+    h += `<div class="scan-bt-diag ${diag}">승률 <b style="color:${wCol}">${winRate.toFixed(0)}%</b> &nbsp;·&nbsp; 평균 R <b style="color:${rCol}">${avgR >= 0 ? "+" : ""}${avgR.toFixed(2)}R</b> &nbsp;—&nbsp; ${diagTxt}</div>`;
 
     panel.innerHTML = h;
     btn.textContent = "\uD83D\uDCCA \uC811\uAE30"; btn.disabled = false;
@@ -817,6 +807,9 @@ function _restoreScanCache() {
         ? _results.map(c => renderKumoCard(c)).join("")
         : _results.map((c, i) => renderFisCard(c, i)).join("");
     }
+    // 코스닥 경고 복원
+    const _kwEl = document.getElementById("kosdaqWarn");
+    if (_kwEl) _kwEl.style.display = (cache.market === "kosdaq" && cache.type === "fis") ? "block" : "none";
   } catch(e) { if (rs) rs.style.display = "none"; }
 }
 

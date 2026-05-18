@@ -978,27 +978,34 @@ function runBacktest(fisBars) {
     buckets[key].counts.mfe++;
     if (hadMFE) buckets[key].wins.mfe++;
 
-    // ── 기계적 전략 시뮬: FIS≥80 AND 진입점수≥80 ──
-    if (score >= 80 && (fisBars[i].FIS || 0) >= 80 && i + 1 < n && i <= n - 16) {
+
+    // ?? ??? ?? ??: FIS>=60 AND ????>=65 (?? ?? ??? ??) ??
+    if (score >= 65 && (fisBars[i].FIS || 0) >= 60 && i + 1 < n && i <= n - 26) {
       const atr = fisBars[i].ATR14 || 0;
-      if (atr > 0) {
-        const high22 = fisBars.slice(Math.max(0, i - 21), i + 1).reduce((m, b) => Math.max(m, b.high || 0), 0);
-        const stopPrice = high22 - atr * 3;
+      const ema20 = fisBars[i].EMA20 || 0;
+      if (atr > 0 && ema20 > 0) {
+        const stopPrice = ema20 - atr;          // EMA20-ATR (?? ??)
         const nextBar = fisBars[i + 1];
         const entryPrice = nextBar ? (nextBar.open || nextBar.close || 0) : 0;
-        if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice) {
-          const tp1mech = entryPrice + atr * 2;
-          const risk = entryPrice - stopPrice;
-          let exitPrice = (fisBars[Math.min(i + 15, n - 1)]?.close || entryPrice);
-          let exitType = "기간만료";
-          for (let j = i + 1; j <= Math.min(i + 15, n - 1); j++) {
+        const rr_risk = entryPrice - stopPrice;
+        if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice && (atr * 3) / rr_risk >= 1.5) {
+          const tp1mech = entryPrice + atr * 2;  // 1??? ATR?2
+          const tp2mech = entryPrice + atr * 3;  // 2??? ATR?3
+          const risk = rr_risk;
+          let exitPrice = (fisBars[Math.min(i + 25, n - 1)]?.close || entryPrice);
+          let exitType = "????";
+          let tp1Hit = false;
+          for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
             const bj = fisBars[j];
             if (!bj) continue;
-            if ((bj.low || Infinity) <= stopPrice) { exitPrice = stopPrice; exitType = "손절"; break; }
-            if ((bj.high || 0) >= tp1mech)         { exitPrice = tp1mech;   exitType = "1차익절"; break; }
+            if ((bj.low || Infinity) <= (tp1Hit ? entryPrice : stopPrice)) {
+              exitPrice = tp1Hit ? entryPrice : stopPrice; exitType = "??"; break;
+            }
+            if (!tp1Hit && (bj.high || 0) >= tp1mech) { tp1Hit = true; }
+            if (tp1Hit && (bj.high || 0) >= tp2mech)  { exitPrice = tp2mech; exitType = "2???"; break; }
           }
           const pnlPct = (exitPrice - entryPrice) / entryPrice * 100;
-          const rrRatio = risk > 0 ? (tp1mech - entryPrice) / risk : 0;
+          const rrRatio = risk > 0 ? tp2mech / risk : 0;
           mechTrades.push({ pnlPct, exitType, rrRatio });
         }
       }
@@ -1007,69 +1014,16 @@ function runBacktest(fisBars) {
   return { buckets, mechTrades };
 }
 
-function _renderMechBt(mechTrades) {
-  if (!mechTrades || mechTrades.length === 0) {
-    return <div class="bt-diag bt-neutral" style="margin-top:10px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580) \uc2e0\ud638 \uc5c6\uc74c \u2014 \uacfc\uac70 \ub370\uc774\ud130\uc5d0\uc11c \ub450 \uc870\uac74 \ub3d9\uc2dc \ucda9\uc871 \uad6c\uac04 \uc5c6\uc74c</div>;
-  }
-  const n = mechTrades.length;
-  const wins     = mechTrades.filter(t => t.exitType === "1\ucc28\uc775\uc808");
-  const losses   = mechTrades.filter(t => t.exitType === "\uc190\uc808");
-  const timeouts = mechTrades.filter(t => t.exitType === "\uae30\uac04\ub9cc\ub8cc");
-  const winRate   = wins.length / n;
-  const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
-  const avgLoss   = losses.length ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length : 0;
-  const totalProfit = wins.reduce((s,t)=>s+t.pnlPct,0);
-  const totalLoss   = Math.abs(losses.reduce((s,t)=>s+t.pnlPct,0));
-  const pf          = totalLoss > 0 ? totalProfit/totalLoss : (totalProfit>0 ? Infinity : 0);
-  const expectancy  = mechTrades.reduce((s,t)=>s+t.pnlPct,0)/n;
-  const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
-  const wrCol = winRate >= 0.55 ? "#2ea043" : winRate >= 0.45 ? "#d29922" : "#e53935";
-  const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
-  let verdict, verdictClass;
-  if (n < 5) {
-    verdict = \u26a0 \uc2e0\ud638 \uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4\uc801 \uc2e0\ub8b0\ub3c4 \ub099\uc74c; verdictClass = "bt-neutral";
-  } else if (pf >= 1.5 && winRate >= 0.50) {
-    verdict = \u2713 \uc190\uc775\ube44\u00b7\uc2b9\ub960 \ubaa8\ub450 \uc591\ud638 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc804\ub7b5 \uc801\uc6a9 \uac00\ub2a5; verdictClass = "bt-ok";
-  } else if (pf >= 1.0 && expectancy > 0) {
-    verdict = \u25b3 \uae30\ub300\uac12 \ud50c\ub7ec\uc2a4\uc774\ub098 \uc190\uc775\ube44 \uc57d\ud568 \u2014 \uc190\uc808 \uc5c4\uc218 \ud544\uc218; verdictClass = "bt-neutral";
-  } else {
-    verdict = \u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc9c4\uc785/\uc190\uc808 \uc804\ub7b5 \ubbf8\uc801\ud569; verdictClass = "bt-warn";
-  }
-  const pfStr = pf === Infinity ? "\u221e" : pf.toFixed(2);
-  return <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
-    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbfc (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580)</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">\uc9c4\uc785: \uc2e0\ud638 \ub2e4\uc74c\ubd09 \uc2dc\uac00 | \uc190\uc808: Chandelier(high22\u2212ATR\u00d73) | \uc775\uc808: ATR\u00d72 | \ucd5c\ub300 15\ubd09 \ubcf4\uc720</div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
-      <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\uc2e0\ud638\uc218 / \uc2b9(\uc775\uc808) / \ud328(\uc190\uc808)</div>
-        <div style="font-size:12px;font-weight:700">\uac74 | \uc2b9 / \ud328 / \ub9cc\ub8cc</div>
-      </div>
-      <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\uc2b9\ub960</div>
-        <div style="font-size:14px;font-weight:800;color:">%</div>
-      </div>
-      <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\ud3c9\uade0 \uc218\uc775 / \uc190\uc2e4</div>
-        <div style="font-size:12px;font-weight:700"><span style="color:#2ea043">+%</span> / <span style="color:#e53935">%</span></div>
-      </div>
-      <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\uc190\uc775\ube44(PF) / \uae30\ub300\uac12</div>
-        <div style="font-size:12px;font-weight:700"><span style="color:"></span> / <span style="color:">%</span></div>
-      </div>
-    </div>
-    <div class="bt-diag "></div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">\u203b \uac70\ub798\ube44\uc6a9\u00b7\uc2ac\ub9ac\ud53c\uc9c0 \ubbf8\ud3ec\ud568. \uacfc\uac70 \uc131\uacfc\uac00 \ubbf8\ub798\ub97c \ubcf4\uc7a5\ud558\uc9c0 \uc54a\uc74c</div>
-  </div>;
-}
+
 
 function _renderMechBt(mechTrades) {
   if (!mechTrades || mechTrades.length === 0) {
-    return <div class="bt-diag bt-neutral" style="margin-top:10px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580) \uc2e0\ud638 \uc5c6\uc74c \u2014 \uacfc\uac70 \ub370\uc774\ud130\uc5d0\uc11c \ub450 \uc870\uac74 \ub3d9\uc2dc \ucda9\uc871 \uad6c\uac04 \uc5c6\uc74c</div>;
+    return `<div class="bt-diag bt-neutral" style="margin-top:10px">⚡ 기계적 전략 (FIS≥60 + 진입점수≥65) 과거 신호 없음</div>`;
   }
-  const n = mechTrades.length;
-  const wins     = mechTrades.filter(t => t.exitType === "1\ucc28\uc775\uc808");
-  const losses   = mechTrades.filter(t => t.exitType === "\uc190\uc808");
-  const timeouts = mechTrades.filter(t => t.exitType === "\uae30\uac04\ub9cc\ub8cc");
+  const n        = mechTrades.length;
+  const wins     = mechTrades.filter(t => t.exitType === "2차익절" || t.exitType === "1차익절");
+  const losses   = mechTrades.filter(t => t.exitType === "손절");
+  const timeouts = mechTrades.filter(t => t.exitType === "기간만료");
   const winRate   = wins.length / n;
   const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
   const avgLoss   = losses.length ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length : 0;
@@ -1078,44 +1032,45 @@ function _renderMechBt(mechTrades) {
   const pf          = totalLoss > 0 ? totalProfit/totalLoss : (totalProfit>0 ? Infinity : 0);
   const expectancy  = mechTrades.reduce((s,t)=>s+t.pnlPct,0)/n;
   const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
-  const wrCol = winRate >= 0.55 ? "#2ea043" : winRate >= 0.45 ? "#d29922" : "#e53935";
+  const wrCol = winRate >= 0.50 ? "#2ea043" : winRate >= 0.40 ? "#d29922" : "#e53935";
   const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
   let verdict, verdictClass;
   if (n < 5) {
-    verdict = \u26a0 \uc2e0\ud638 \uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4\uc801 \uc2e0\ub8b0\ub3c4 \ub099\uc74c; verdictClass = "bt-neutral";
-  } else if (pf >= 1.5 && winRate >= 0.50) {
-    verdict = \u2713 \uc190\uc775\ube44\u00b7\uc2b9\ub960 \ubaa8\ub450 \uc591\ud638 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc804\ub7b5 \uc801\uc6a9 \uac00\ub2a5; verdictClass = "bt-ok";
+    verdict = `⚠ 신호 ${n}건 — 5건 미만, 통계 신뢰 낙음`; verdictClass = "bt-neutral";
+  } else if (pf >= 1.5 && winRate >= 0.45) {
+    verdict = `✓ 손익비·승률 양호 — 이 종목 기계적 전략 적용 가능`; verdictClass = "bt-ok";
   } else if (pf >= 1.0 && expectancy > 0) {
-    verdict = \u25b3 \uae30\ub300\uac12 \ud50c\ub7ec\uc2a4\uc774\ub098 \uc190\uc775\ube44 \uc57d\ud568 \u2014 \uc190\uc808 \uc5c4\uc218 \ud544\uc218; verdictClass = "bt-neutral";
+    verdict = `△ 기대값 플러스·손익비 약함 — 포지션 규모 조절 필요`; verdictClass = "bt-neutral";
   } else {
-    verdict = \u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9\uc5d0\uc11c \uae30\uacc4\uc801 \uc9c4\uc785/\uc190\uc808 \uc804\ub7b5 \ubbf8\uc801\ud569; verdictClass = "bt-warn";
+    verdict = `⚠ 기대값 마이너스 — 이 종목 기계적 전략 부적합`; verdictClass = "bt-warn";
   }
-  const pfStr = pf === Infinity ? "\u221e" : pf.toFixed(2);
-  return <div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
-    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbfc (FIS\u226580 + \uc9c4\uc785\uc810\uc218\u226580)</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">\uc9c4\uc785: \uc2e0\ud638 \ub2e4\uc74c\ubd09 \uc2dc\uac00 | \uc190\uc808: Chandelier(high22\u2212ATR\u00d73) | \uc775\uc808: ATR\u00d72 | \ucd5c\ub300 15\ubd09 \ubcf4\uc720</div>
+  const pfStr = pf === Infinity ? "∞" : pf.toFixed(2);
+  return `<div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
+    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시민 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 익절: ATR×2→ATR×3 | 최대 25봉</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\uc2e0\ud638\uc218 / \uc2b9(\uc775\uc808) / \ud328(\uc190\uc808)</div>
-        <div style="font-size:12px;font-weight:700">\uac74 | \uc2b9 / \ud328 / \ub9cc\ub8cc</div>
+        <div style="font-size:10px;color:var(--text3)">신호 / 익절 / 손절 / 만료</div>
+        <div style="font-size:12px;font-weight:700">${n}건 | ${wins.length} / ${losses.length} / ${timeouts.length}</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\uc2b9\ub960</div>
-        <div style="font-size:14px;font-weight:800;color:">%</div>
+        <div style="font-size:10px;color:var(--text3)">승률</div>
+        <div style="font-size:14px;font-weight:800;color:${wrCol}">${(winRate*100).toFixed(0)}%</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\ud3c9\uade0 \uc218\uc775 / \uc190\uc2e4</div>
-        <div style="font-size:12px;font-weight:700"><span style="color:#2ea043">+%</span> / <span style="color:#e53935">%</span></div>
+        <div style="font-size:10px;color:var(--text3)">평균수익 / 손실</div>
+        <div style="font-size:12px;font-weight:700"><span style="color:#2ea043">+${avgWin.toFixed(1)}%</span> / <span style="color:#e53935">${avgLoss.toFixed(1)}%</span></div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">\uc190\uc775\ube44(PF) / \uae30\ub300\uac12</div>
-        <div style="font-size:12px;font-weight:700"><span style="color:"></span> / <span style="color:">%</span></div>
+        <div style="font-size:10px;color:var(--text3)">손익비(PF) / 기대값</div>
+        <div style="font-size:12px;font-weight:700"><span style="color:${pfCol}">${pfStr}</span> / <span style="color:${exCol}">${expectancy.toFixed(1)}%</span></div>
       </div>
     </div>
-    <div class="bt-diag "></div>
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">\u203b \uac70\ub798\ube44\uc6a9\u00b7\uc2ac\ub9ac\ud53c\uc9c0 \ubbf8\ud3ec\ud568. \uacfc\uac70 \uc131\uacfc\uac00 \ubbf8\ub798\ub97c \ubcf4\uc7a5\ud558\uc9c0 \uc54a\uc74c</div>
-  </div>;
+    <div class="bt-diag ${verdictClass}">${verdict}</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">※ 거래비용·슬리피지 미포함. 과거 성과가 미래를 보장하지 않음</div>
+  </div>`;
 }
+
 
 function renderBacktest(fisBars) {
   const el = document.getElementById("backtestResult");
@@ -1214,7 +1169,6 @@ function renderBacktest(fisBars) {
       <b>점수↑=MFE↑</b>가 확인되면 이 종목에서 지표 변별력이 유효합니다.
     </div>`
 
-    html += _renderMechBt(mechTrades);
     html += _renderMechBt(mechTrades);
     el.innerHTML = html;
   }, 10);

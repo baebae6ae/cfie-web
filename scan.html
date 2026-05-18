@@ -83,6 +83,12 @@
       <span class="result-count" id="resultCount">0개</span>
       <span class="result-note"  id="resultLabel"></span>
     </div>
+    <div id="kosdaqWarn" style="display:none;margin:0 0 12px;padding:10px 14px;background:rgba(210,153,34,0.12);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:12px;color:#d29922;line-height:1.6">
+      <b>⚠ 코스닥 주의</b> &mdash; 백테스트 결과, 코스닥은 동일 조건에서 기대값 &minus;1.0%로
+      KOSPI(&minus;0.5%) · 미국(+0.2%) 대비 현저히 저조합니다.
+      스쫐 결과는 <b>후보군 필터링 용도</b>로만 활용하고,
+      코스닥 종목은 추가 차트 분석 후 진입 여부를 판단하세요.
+    </div>
     <div class="candidates-grid" id="candidatesGrid"></div>
     <div id="scanMoreWrap" class="more-wrap" style="display:none">
       <button id="scanMoreBtn" class="more-btn" onclick="loadMoreScan()">자세히 보기</button>
