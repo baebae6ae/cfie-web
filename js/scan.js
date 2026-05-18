@@ -281,6 +281,7 @@ function _analyzeFis(ticker, name, bars) {
 
   // fisBars 캐싱 (백테스트 버튼 클릭 시 재활용)
   _btFisBarsCache[ticker] = fisBars;
+  const btSim = _runBtSim(fisBars);  // 카드 렌더링 시 즉시 강조용
 
   return {
     ticker,
@@ -308,6 +309,10 @@ function _analyzeFis(ticker, name, bars) {
     high20:       high20_v,
     summary_l1:   judgment.summary_l1    || "",
     ichimoku:     judgment.ichimoku_status || "—",
+    btDiag:       btSim?.diag ?? "",
+    btAvgR:       btSim?.avgR ?? null,
+    btWinRate:    btSim?.winRate ?? null,
+    btTotal:      btSim?.total ?? 0,
   };
 }
 
@@ -504,8 +509,21 @@ function renderFisCard(c, idx) {
   const mCls   = c.momentum >= 5 ? "pos" : c.momentum < 0 ? "neg" : "";
   const pf     = _market === "us" ? "" : "₩";
 
+  const btDiag   = c.btDiag ?? "";
+  const cardStyle = btDiag === "bt-ok"
+    ? 'style="border:1.5px solid rgba(46,160,67,0.6);background:linear-gradient(135deg,rgba(46,160,67,0.10) 0%,var(--bg2,#161b22) 60%);position:relative"'
+    : btDiag === "bt-bad"
+    ? 'style="border:1.5px solid rgba(229,57,53,0.5);position:relative"'
+    : btDiag === "bt-warn"
+    ? 'style="border:1.5px solid rgba(210,153,34,0.5);position:relative"'
+    : "";
+  const btBadge = btDiag === "bt-ok"
+    ? `<div class="bt-ok-badge" style="position:absolute;top:8px;right:8px;background:#2ea043;color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700">✓ 백테스트 유효</div>`
+    : "";
+
   return `
-  <div class="candidate-card">
+  <div class="candidate-card" ${cardStyle}>
+  ${btBadge}
     <div class="cc-top">
       <div>
         <div class="cc-name">${c.name}</div>
@@ -663,6 +681,52 @@ function renderKumoCard(c) {
   </div>`;
 }
 // ── 미니 백테스트 (스캔 카드 버튼 클릭 시 지연 계산) ──────────────
+// ── 백테스트 시뮬레이션 공통 헬퍼 ─────────────────────────────────────
+// _analyzeFis 스캔 시 + 백테스트 동시 실행, 결과는 카드에 즉시 반영
+function _runBtSim(fisBars) {
+  if (!fisBars || typeof calcEntryScore !== "function") return null;
+  const n = fisBars.length;
+  if (n < 100) return null;
+  const MIN_LB = 80;
+  const trades = [];
+  let skipUntil = 0;
+  for (let i = MIN_LB; i < n - 26; i++) {
+    if (i < skipUntil) continue;
+    const row = fisBars[i];
+    if ((row.FIS ?? 0) < 60) continue;
+    const entryData = calcEntryScore(fisBars.slice(0, i + 1));
+    if (!entryData || (entryData.score ?? 0) < 65) continue;
+    const close = row.close ?? row.Close ?? 0;
+    const atr   = row.ATR14 ?? 0;
+    if (!close || !atr) continue;
+    const ema20bt = row.EMA20 ?? close;
+    const btRisk  = close - (ema20bt - atr);
+    if (btRisk <= 0 || (atr * 3) / btRisk < 1.5) continue;
+    const stopLoss = ema20bt - atr;
+    const tp2      = close + atr * 3;
+    let result = "timeout";
+    for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
+      const bar = fisBars[j];
+      const high = bar.high ?? bar.High ?? bar.close;
+      const low  = bar.low  ?? bar.Low  ?? bar.close;
+      if (low <= stopLoss) { result = "stop"; break; }
+      if (high >= tp2)     { result = "tp2";  break; }
+      if (j === Math.min(i + 25, n - 1)) result = "timeout";
+    }
+    trades.push({ result });
+    skipUntil = i + 5;
+  }
+  if (trades.length === 0) return null;
+  const total    = trades.length;
+  const nTp2     = trades.filter(t => t.result === "tp2").length;
+  const nStop    = trades.filter(t => t.result === "stop").length;
+  const nTimeout = trades.filter(t => t.result === "timeout").length;
+  const avgR     = (nTp2 * 3.0 + nStop * (-1.0)) / total;
+  const winRate  = nTp2 / total * 100;
+  const diag     = avgR >= 0.5 ? "bt-ok" : avgR >= 0 ? "bt-warn" : "bt-bad";
+  return { total, nTp2, nStop, nTimeout, avgR, winRate, diag };
+}
+
 ﻿﻿function _showScanBt(ticker, idx) {
   const panel = document.getElementById("bt-panel-" + idx);
   const btn   = document.getElementById("bt-btn-" + idx);
@@ -686,84 +750,17 @@ function renderKumoCard(c) {
       btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    const n = fisBars.length;
-    const MIN_LB = 80;
-    if (n < MIN_LB + 20) {
-      panel.innerHTML = "<div class='scan-bt-empty'>\uB370\uC774\uD130 \uBD80\uC871 (\uCD5C\uC18C 100\uBD09)</div>";
-      btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
+    const sim = _runBtSim(fisBars);
+    if (!sim) {
+      panel.innerHTML = "<div class='scan-bt-empty'>신호 없음 (데이터 부족)</div>";
+      btn.textContent = "📊 백테스트"; btn.disabled = false; return;
     }
+    const { total, nTp2, nStop, nTimeout, avgR, winRate, diag } = sim;
 
-    const trades = [];
-    let skipUntil = 0;
-
-    for (let i = MIN_LB; i < n - 26; i++) {
-      if (i < skipUntil) continue;
-
-      // [1] FIS >= 65 (fast pre-filter)
-      const row = fisBars[i];
-      const fis = row.FIS ?? 0;
-      if (fis < 60) continue;   // ?? ??? ??
-
-      // [2] Entry score >= 80 + [3] Freshness check
-      const entryData = calcEntryScore(fisBars.slice(0, i + 1));
-      if (!entryData) continue;
-      const entry = entryData.score ?? 0;
-      if (entry < 65) continue;  // ?? ??? ??
-      const biu = entryData.metrics?.freshness_bars ?? 0;  // hard filter ??
-
-      const close = row.close ?? row.Close ?? 0;
-      const atr   = row.ATR14 ?? 0;
-      if (!close || !atr) continue;
-
-      // [3] R:R >= 1.5 (EMA20 ??? ?? ? ?? ??? ??)
-      const ema20bt = row.EMA20 ?? close;
-      const btStop  = ema20bt - atr;
-      const btRisk  = close - btStop;
-      if (btRisk <= 0) continue;
-      const rrCalc  = (atr * 3) / btRisk;
-      if (rrCalc < 1.5) continue;
-
-      // ?? ??! ??? ?? ????? (Mode C: TP2 ?? ??, ?? ??? ??)
-      // ???? ??: TP1?BE ??(PF=0.90) < TP2?? ??(PF=1.00)
-      const stopLoss = ema20bt - atr;   // EMA20-ATR ??
-      const tp2      = close + atr * 3; // 3R ??
-
-      let result = "timeout";
-
-      for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
-        const bar  = fisBars[j];
-        const high = bar.high ?? bar.High ?? bar.close;
-        const low  = bar.low  ?? bar.Low  ?? bar.close;
-
-        if (low <= stopLoss) { result = "stop"; break; }
-        if (high >= tp2)     { result = "tp2";  break; }
-        if (j === Math.min(i + 25, n - 1)) result = "timeout";
-      }
-      trades.push({ result });
-      skipUntil = i + 5;  // \uC2E0\uD638 \uC911\uBCF5 \uBC29\uC9C0
-    }
-
-    if (trades.length === 0) {
-      panel.innerHTML = "<div class='scan-bt-empty'>\uACFC\uAC70 \uC2E0\uD638 \uC5C6\uC74C (\uB370\uC774\uD130 \uBD80\uC871)</div>";
-      btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
-    }
-
-    const total    = trades.length;
-    const nTp2     = trades.filter(t => t.result === "tp2").length;
-    const nStop    = trades.filter(t => t.result === "stop").length;
-    const nTimeout = trades.filter(t => t.result === "timeout").length;
-
-    // Mode C R ??: TP2=+3R, ??=-1R, timeout=0R (TP1/BE ??)
-    const totalR = nTp2 * 3.0 + nStop * (-1.0);
-    const avgR   = totalR / total;
-    const winRate = nTp2 / total * 100;
 
     const pc   = (cnt) => total ? (cnt / total * 100).toFixed(0) + "%" : "—";
     const rCol = avgR >= 0.5 ? "#2ea043" : avgR >= 0 ? "#d29922" : "#e53935";
     const wCol = winRate >= 40 ? "#2ea043" : winRate >= 30 ? "#d29922" : "#e53935";
-    const diag = avgR >= 0.5
-      ? "bt-ok"
-      : avgR >= 0 ? "bt-warn" : "bt-bad";
     const diagTxt = avgR >= 0.5
       ? "✓ 전략 유효 — 진입 근거 있음"
       : avgR >= 0 ? "⚠ 경계선, 주의 필요"
