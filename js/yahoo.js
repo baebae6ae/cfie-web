@@ -206,7 +206,7 @@ function _ssGet(key) {
 function _ssSet(key, data) {
   try { sessionStorage.setItem(_CACHE_PFX + key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
-function _lsGet(key, ttl = 86_400_000) {
+function _lsGet(key, ttl = 21_600_000) {  // 6?? ?? TTL
   try {
     const raw = localStorage.getItem(_CACHE_PFX + key);
     if (!raw) return null;
@@ -221,9 +221,8 @@ function _lsSet(key, data) {
 
 const _YF_BASE = "https://query1.finance.yahoo.com";
 const _YF_PROXIES = [
-  "https://api.allorigins.win/raw?url=",
   "https://corsproxy.io/?url=",
-  "https://thingproxy.freeboard.io/fetch/",
+  "https://api.allorigins.win/raw?url=",
 ];
 
 async function _fetch(url) {
@@ -231,7 +230,7 @@ async function _fetch(url) {
   try {
     const r = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(3000),
     });
     if (r.ok) return await r.json();
   } catch (_) {}
@@ -284,9 +283,6 @@ async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
 
 // ── 단일 현재가 (v8 chart, range=5d interval=1d — meta보다 bars로 계산이 정확) ──
 async function fetchQuote(ticker) {
-  const _qck = `quote_${ticker}`;
-  const _qcached = _ssGet(_qck);
-  if (_qcached) return _qcached;
   try {
     const url = `${_YF_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
     const json = await _fetch(url);
@@ -311,7 +307,7 @@ async function fetchQuote(ticker) {
     const change    = prev != null ? price - prev : null;
     const changePct = (change != null && prev) ? (change / prev) * 100 : null;
 
-    const _qr = {
+    return {
       ticker:      ticker.toUpperCase(),
       price,
       prev,
@@ -321,8 +317,6 @@ async function fetchQuote(ticker) {
       name:        meta.shortName || meta.longName || ticker,
       marketState: meta.marketState ?? null,
     };
-    _ssSet(_qck, _qr);
-    return _qr;
   } catch { return null; }
 }
 
