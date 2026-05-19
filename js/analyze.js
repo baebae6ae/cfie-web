@@ -462,12 +462,12 @@ function renderChart(bars, fisBars, tf, meta) {
       const b2 = senkouB_map[t];
       if (a == null || b2 == null) { flush(lastColor); continue; }
 
-      // LightweightCharts API: timeToCoordinate, priceToCoordinate
+      // LightweightCharts v4: priceToCoordinate는 series 메서드 (priceScale에서 제거됨)
       let xCoord;
       try { xCoord = _chart.timeScale().timeToCoordinate(t); } catch(e) { continue; }
       let yA, yB;
-      try { yA = _chart.priceScale("right").priceToCoordinate(a); } catch(e) { continue; }
-      try { yB = _chart.priceScale("right").priceToCoordinate(b2); } catch(e) { continue; }
+      try { yA = candles.priceToCoordinate(a); } catch(e) { continue; }
+      try { yB = candles.priceToCoordinate(b2); } catch(e) { continue; }
 
       if (xCoord == null || yA == null || yB == null) { flush(lastColor); continue; }
       if (xCoord < 0 || xCoord > w) { flush(lastColor); continue; }
