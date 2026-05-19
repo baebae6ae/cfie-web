@@ -510,15 +510,16 @@ function renderFisCard(c, idx) {
   const pf     = _market === "us" ? "" : "₩";
 
   const btDiag   = c.btDiag ?? "";
+  // bt ?? ?? ???: ?? ?? ?? ?? ?? ?? + ????
   const cardStyle = btDiag === "bt-ok"
-    ? 'style="border:1.5px solid rgba(46,160,67,0.6);background:linear-gradient(135deg,rgba(46,160,67,0.10) 0%,var(--bg2,#161b22) 60%);position:relative"'
+    ? 'style="border-left:3px solid #2ea043;box-shadow:inset 3px 0 0 rgba(46,160,67,0.15);position:relative"'
     : btDiag === "bt-bad"
-    ? 'style="border:1.5px solid rgba(229,57,53,0.5);position:relative"'
+    ? 'style="border-left:3px solid #e53935;box-shadow:inset 3px 0 0 rgba(229,57,53,0.12);position:relative"'
     : btDiag === "bt-warn"
-    ? 'style="border:1.5px solid rgba(210,153,34,0.5);position:relative"'
+    ? 'style="border-left:3px solid #d29922;box-shadow:inset 3px 0 0 rgba(210,153,34,0.12);position:relative"'
     : "";
   const btBadge = btDiag === "bt-ok"
-    ? `<div class="bt-ok-badge" style="position:absolute;top:8px;right:8px;background:#2ea043;color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700">✓ 백테스트 유효</div>`
+    ? `<div class="bt-ok-badge" style="position:absolute;top:8px;right:8px;background:rgba(46,160,67,0.15);color:#2ea043;border:1px solid rgba(46,160,67,0.4);font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700">✓ 백테스트 유효</div>`
     : "";
 
   return `
@@ -779,21 +780,26 @@ function _runBtSim(fisBars) {
     // 백테스트 결과가 bt-ok이면 카드 강조 (평균R>=0.5 + 승률>=40%)
     const card = panel.closest('.candidate-card');
     if (card) {
+      card.style.position = 'relative';
       if (diag === 'bt-ok') {
-        card.style.border     = '1.5px solid rgba(46,160,67,0.6)';
-        card.style.background = 'linear-gradient(135deg,rgba(46,160,67,0.10) 0%,var(--bg2,#161b22) 60%)';
+        card.style.borderLeft = '3px solid #2ea043';
+        card.style.boxShadow  = 'inset 3px 0 0 rgba(46,160,67,0.15)';
+        card.style.background = '';
         if (!card.querySelector('.bt-ok-badge')) {
           const badge = document.createElement('div');
           badge.className = 'bt-ok-badge';
           badge.textContent = '✓ 백테스트 유효';
-          badge.style.cssText = 'position:absolute;top:8px;right:8px;background:#2ea043;color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;pointer-events:none';
-          card.style.position = 'relative';
+          badge.style.cssText = 'position:absolute;top:8px;right:8px;background:rgba(46,160,67,0.15);color:#2ea043;border:1px solid rgba(46,160,67,0.4);font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700';
           card.appendChild(badge);
         }
       } else if (diag === 'bt-bad') {
-        card.style.border = '1.5px solid rgba(229,57,53,0.5)';
+        card.style.borderLeft = '3px solid #e53935';
+        card.style.boxShadow  = 'inset 3px 0 0 rgba(229,57,53,0.12)';
+        card.style.background = '';
       } else {
-        card.style.border = '1.5px solid rgba(210,153,34,0.5)';
+        card.style.borderLeft = '3px solid #d29922';
+        card.style.boxShadow  = 'inset 3px 0 0 rgba(210,153,34,0.12)';
+        card.style.background = '';
       }
     }
   }, 20);
