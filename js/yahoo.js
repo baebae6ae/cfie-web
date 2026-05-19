@@ -226,30 +226,20 @@ const _YF_PROXIES = [
 ];
 
 async function _fetch(url) {
-  // 1) 직접 시도
-  try {
-    const r = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(3000),
-    });
-    if (r.ok) return await r.json();
-  } catch (_) {}
-
-  // 2) 프록시 순서대로 시도
-  for (const proxy of _YF_PROXIES) {
-    try {
-      const r = await fetch(proxy + encodeURIComponent(url), {
-        signal: AbortSignal.timeout(10000),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        // allorigins는 {contents:"...json..."} 형태로 반환하기도 함
-        if (data && typeof data.contents === "string") return JSON.parse(data.contents);
-        return typeof data === "string" ? JSON.parse(data) : data;
-      }
-    } catch (_) {}
-  }
-  throw new Error("데이터를 불러오는데 실패했습니다.");
+  // 직접 + 모든 프록시를 동시에 시도 → 가장 빨리 응답한 쪽 사용
+  const _parse = async (r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data && typeof data.contents === "string") return JSON.parse(data.contents);
+    return typeof data === "string" ? JSON.parse(data) : data;
+  };
+  const attempts = [
+    fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(1500) }).then(_parse),
+    ..._YF_PROXIES.map(p =>
+      fetch(p + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) }).then(_parse)
+    ),
+  ];
+  return Promise.any(attempts);
 }
 
 // ── OHLCV 데이터 (차트 데이터) ────────────────────

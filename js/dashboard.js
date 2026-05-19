@@ -118,7 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadMarket();
   setTimeout(() => load52h("kospi", document.querySelector(".h52-tab")), 600);
   loadMarketMap("KR");
-  loadMarketMap("US");
+  setTimeout(() => loadMarketMap("US"), 200);  // 프록시 동시 요청 분산
 });
 
 // ── 시장 지수 ─────────────────────────────────────────
