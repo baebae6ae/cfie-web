@@ -226,20 +226,18 @@ const _YF_PROXIES = [
 ];
 
 async function _fetch(url) {
-  // 직접 + 모든 프록시를 동시에 시도 → 가장 빨리 응답한 쪽 사용
+  // 프록시들을 병렬로 시도 → 가장 빨리 응답한 쪽 사용 (직접 요청 제거 — 항상 CORS 실패)
   const _parse = async (r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (data && typeof data.contents === "string") return JSON.parse(data.contents);
     return typeof data === "string" ? JSON.parse(data) : data;
   };
-  const attempts = [
-    fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(1500) }).then(_parse),
-    ..._YF_PROXIES.map(p =>
+  return Promise.any(
+    _YF_PROXIES.map(p =>
       fetch(p + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) }).then(_parse)
-    ),
-  ];
-  return Promise.any(attempts);
+    )
+  );
 }
 
 // ── OHLCV 데이터 (차트 데이터) ────────────────────
