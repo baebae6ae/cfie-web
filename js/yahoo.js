@@ -320,12 +320,43 @@ async function fetchQuote(ticker) {
   } catch { return null; }
 }
 
-// ── 다수 현재가 (4개씩 병렬 + 150ms 딜레이 — 429 방지) ──────
+// ── 배치 현재가 조회 (단일 API 호출 — 빠름) ──────────────────────
+async function fetchBatchQuote(tickers) {
+  const MAX = 100;
+  const dict = {};
+  for (let i = 0; i < tickers.length; i += MAX) {
+    const chunk = tickers.slice(i, i + MAX);
+    const url = `${_YF_BASE}/v7/finance/quote?symbols=${chunk.map(t => encodeURIComponent(t)).join(',')}`;
+    const json = await _fetch(url);
+    for (const r of (json?.quoteResponse?.result ?? [])) {
+      dict[r.symbol] = {
+        ticker:      r.symbol,
+        price:       r.regularMarketPrice ?? null,
+        prev:        r.regularMarketPreviousClose ?? null,
+        change:      r.regularMarketChange ?? null,
+        changePct:   r.regularMarketChangePercent ?? null,
+        currency:    r.currency ?? null,
+        name:        r.shortName || r.longName || r.symbol,
+        marketState: r.marketState ?? null,
+      };
+    }
+  }
+  for (const t of tickers) { if (!(t in dict)) dict[t] = null; }
+  return dict;
+}
+
+// ── 다수 현재가 (배치 우선, 실패 시 4개씩 개별 조회) ──────────────
 async function fetchMultiQuote(tickers) {
+  // 1) 배치 API (1~2회 호출로 전체 처리 — 빠름)
+  try {
+    const batch = await fetchBatchQuote(tickers);
+    if (Object.values(batch).some(v => v !== null)) return batch;
+  } catch (_) {}
+
+  // 2) Fallback: 개별 4개씩 + 150ms 딜레이
   const CONCURRENCY = 4;
   const DELAY_MS    = 150;
   const results     = {};
-
   for (let i = 0; i < tickers.length; i += CONCURRENCY) {
     const chunk = tickers.slice(i, i + CONCURRENCY);
     const settled = await Promise.allSettled(chunk.map(t => fetchQuote(t)));
@@ -333,7 +364,6 @@ async function fetchMultiQuote(tickers) {
       const r = settled[idx];
       results[t] = r.status === "fulfilled" ? r.value : null;
     });
-    // 마지막 청크 제외 딜레이
     if (i + CONCURRENCY < tickers.length) {
       await new Promise(res => setTimeout(res, DELAY_MS));
     }
