@@ -117,8 +117,8 @@ let _h52StopFlag = false;
 document.addEventListener("DOMContentLoaded", () => {
   loadMarket();
   setTimeout(() => load52h("kospi", document.querySelector(".h52-tab")), 600);
-  setTimeout(() => loadMarketMap("KR"), 800);
-  setTimeout(() => loadMarketMap("US"), 900);
+  // setTimeout(() => loadMarketMap("KR"), 800);  // TradingView widget handles KR heatmap
+  // setTimeout(() => loadMarketMap("US"), 900);  // TradingView widget handles US heatmap
 });
 
 // ── 시장 지수 ─────────────────────────────────────────
