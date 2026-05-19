@@ -1,4 +1,4 @@
-
+﻿
 // ── 미국 주요 종목 로컬 검색 DB (ticker, 검색어들...) ──────────────────────
 // API 없이 이름으로 즉시 검색 가능
 const _US_STOCKS = [
@@ -192,10 +192,38 @@ function _searchUSLocal(query) {
 // Yahoo Finance API wrapper (GitHub Pages 호환)
 // ═══════════════════════════════════════════════
 
+// ?? ?? ?? (sessionStorage 10? / localStorage 24??) ?????
+const _CACHE_PFX = "cfie_yf_";
+function _ssGet(key) {
+  try {
+    const raw = sessionStorage.getItem(_CACHE_PFX + key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > 600_000) { sessionStorage.removeItem(_CACHE_PFX + key); return null; }
+    return data;
+  } catch { return null; }
+}
+function _ssSet(key, data) {
+  try { sessionStorage.setItem(_CACHE_PFX + key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+function _lsGet(key, ttl = 86_400_000) {
+  try {
+    const raw = localStorage.getItem(_CACHE_PFX + key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > ttl) { localStorage.removeItem(_CACHE_PFX + key); return null; }
+    return data;
+  } catch { return null; }
+}
+function _lsSet(key, data) {
+  try { localStorage.setItem(_CACHE_PFX + key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 const _YF_BASE = "https://query1.finance.yahoo.com";
 const _YF_PROXIES = [
-  "https://corsproxy.io/?url=",
   "https://api.allorigins.win/raw?url=",
+  "https://corsproxy.io/?url=",
+  "https://thingproxy.freeboard.io/fetch/",
 ];
 
 async function _fetch(url) {
@@ -203,7 +231,7 @@ async function _fetch(url) {
   try {
     const r = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2000),
     });
     if (r.ok) return await r.json();
   } catch (_) {}
@@ -227,6 +255,9 @@ async function _fetch(url) {
 
 // ── OHLCV 데이터 (차트 데이터) ────────────────────
 async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
+  const _ck = `ohlcv_${ticker}_${range}_${interval}`;
+  const _cached = _lsGet(_ck);
+  if (_cached) return _cached;
   const url = `${_YF_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&events=div%2Csplit`;
   const json = await _fetch(url);
   const result = json?.chart?.result?.[0];
@@ -246,11 +277,16 @@ async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
 
   const unique = Array.from(new Map(bars.map(b => [b.time, b])).values());
   unique.sort((a, b) => (a.time > b.time ? 1 : -1));
-  return { bars: unique, meta: result.meta };
+  const _res = { bars: unique, meta: result.meta };
+  _lsSet(_ck, _res);
+  return _res;
 }
 
 // ── 단일 현재가 (v8 chart, range=5d interval=1d — meta보다 bars로 계산이 정확) ──
 async function fetchQuote(ticker) {
+  const _qck = `quote_${ticker}`;
+  const _qcached = _ssGet(_qck);
+  if (_qcached) return _qcached;
   try {
     const url = `${_YF_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
     const json = await _fetch(url);
@@ -275,7 +311,7 @@ async function fetchQuote(ticker) {
     const change    = prev != null ? price - prev : null;
     const changePct = (change != null && prev) ? (change / prev) * 100 : null;
 
-    return {
+    const _qr = {
       ticker:      ticker.toUpperCase(),
       price,
       prev,
@@ -285,6 +321,8 @@ async function fetchQuote(ticker) {
       name:        meta.shortName || meta.longName || ticker,
       marketState: meta.marketState ?? null,
     };
+    _ssSet(_qck, _qr);
+    return _qr;
   } catch { return null; }
 }
 
