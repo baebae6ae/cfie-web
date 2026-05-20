@@ -235,7 +235,10 @@ async function _fetch(url) {
   };
   return Promise.any(
     _YF_PROXIES.map(p =>
-      fetch(p + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) }).then(_parse)
+      fetch(p + encodeURIComponent(url), {
+        cache: "no-store",                   // 브라우저 HTTP 캐시 완전 비활성화
+        signal: AbortSignal.timeout(10000),
+      }).then(_parse)
     )
   );
 }
