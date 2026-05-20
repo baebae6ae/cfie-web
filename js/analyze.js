@@ -409,6 +409,7 @@ function renderChart(bars, fisBars, tf, meta) {
     _volChart.priceScale("right").applyOptions({ scaleMargins:{top:0.1,bottom:0} });
     _volChart.addHistogramSeries({priceFormat:{type:"volume"}}).setData(bars.map(b=>({time:b.time, value:b.volume, color:b.close>=b.open?"#CC000055":"#0047AB55"})));
     _chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(r&&_volChart) _volChart.timeScale().setVisibleLogicalRange(r); });
+    // volChart 역방향 동기화는 아래 통합 시점에서 등록
   }
 
   if (macdEl) {
@@ -428,6 +429,7 @@ function renderChart(bars, fisBars, tf, meta) {
     if (macdData.length)   _macdChart.addLineSeries({color:"#CC0000",lineWidth:1,title:"MACD"}).setData(macdData);
     if (signalData.length) _macdChart.addLineSeries({color:"#1565C0",lineWidth:1,title:"Signal"}).setData(signalData);
     _chart.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(r&&_macdChart) _macdChart.timeScale().setVisibleLogicalRange(r); });
+    // macdChart 역방향 동기화는 아래 통합 시점에서 등록
   }
 
   _chart.timeScale().fitContent();
@@ -502,7 +504,20 @@ function renderChart(bars, fisBars, tf, meta) {
 
   // 초기 드로우 + 범위 변경 시 재드로우
   setTimeout(drawCloud, 100);
-  _chart.timeScale().subscribeVisibleLogicalRangeChange(() => setTimeout(drawCloud, 30));
+  // ── 모든 패널 시간축 양방향 동기화 (어떤 패널에서 휠을 돌려도 전체 확대/축소) ──
+  let _syncingRange = false;
+  function _syncTimeRange(src, r) {
+    if (_syncingRange || !r) return;
+    _syncingRange = true;
+    if (src !== _chart    && _chart)     _chart.timeScale().setVisibleLogicalRange(r);
+    if (src !== _volChart  && _volChart)  _volChart.timeScale().setVisibleLogicalRange(r);
+    if (src !== _macdChart && _macdChart) _macdChart.timeScale().setVisibleLogicalRange(r);
+    setTimeout(drawCloud, 30);
+    _syncingRange = false;
+  }
+  _chart.timeScale().subscribeVisibleLogicalRangeChange(r => _syncTimeRange(_chart, r));
+  if (_volChart)  _volChart.timeScale().subscribeVisibleLogicalRangeChange(r => _syncTimeRange(_volChart, r));
+  if (_macdChart) _macdChart.timeScale().subscribeVisibleLogicalRangeChange(r => _syncTimeRange(_macdChart, r));
 
   // ── 크로스헤어 범례 ────────────────────────────────────────────
   const chartStage = document.getElementById("chartStage");
