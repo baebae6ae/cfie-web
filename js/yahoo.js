@@ -335,27 +335,13 @@ async function fetchQuote(ticker) {
 
 // ── 배치 현재가 조회 (청크 병렬 처리 — 빠름) ────────────────────
 async function fetchBatchQuote(tickers) {
-  const MAX = 25;  // Yahoo Finance 배치 한계 — 25개씩 분할
+  // v7 배치 → v8 개별 병렬 (v8은 인증 불필요 — 401/429 없음)
   const dict = {};
-  const chunks = [];
-  for (let i = 0; i < tickers.length; i += MAX) chunks.push(tickers.slice(i, i + MAX));
-  await Promise.allSettled(chunks.map(async (chunk) => {
+  await Promise.allSettled(tickers.map(async (ticker) => {
     try {
-      const url  = `${_YF_BASE}/v7/finance/quote?symbols=${chunk.join(',')}`;
-      const json = await _fetch(url);
-      for (const r of (json?.quoteResponse?.result ?? [])) {
-        dict[r.symbol] = {
-          ticker:      r.symbol,
-          price:       r.regularMarketPrice ?? null,
-          prev:        r.regularMarketPreviousClose ?? null,
-          change:      r.regularMarketChange ?? null,
-          changePct:   r.regularMarketChangePercent ?? null,
-          currency:    r.currency ?? null,
-          name:        r.shortName || r.longName || r.symbol,
-          marketState: r.marketState ?? null,
-        };
-      }
-    } catch (_) { /* 개별 청크 실패 → 해당 티커는 null로 처리됨 */ }
+      const q = await fetchQuote(ticker);
+      if (q) dict[ticker] = q;
+    } catch (_) {}
   }));
   for (const t of tickers) { if (!(t in dict)) dict[t] = null; }
   return dict;
@@ -363,21 +349,9 @@ async function fetchBatchQuote(tickers) {
 
 // ── 다수 현재가 (배치 → null 종목 개별 보완) ────────────────────────
 async function fetchMultiQuote(tickers) {
-  // 1) 배치 API (25개씩 병렬 조회)
-  let result = {};
-  try { result = await fetchBatchQuote(tickers); } catch (_) {}
-
-  // 2) 배치에서 누락된 종목만 개별 재시도 (6개씩 병렬)
-  const missing = tickers.filter(t => !result[t]);
-  for (let i = 0; i < missing.length; i += 6) {
-    const chunk = missing.slice(i, i + 6);
-    const settled = await Promise.allSettled(chunk.map(t => fetchQuote(t)));
-    chunk.forEach((t, idx) => {
-      const r = settled[idx];
-      result[t] = r.status === "fulfilled" ? r.value : null;
-    });
-  }
-  return result;
+  // fetchBatchQuote가 v8 개별 병렬로 동작하므로 추가 재시도 불필요
+  try { return await fetchBatchQuote(tickers); } catch (_) {}
+  return Object.fromEntries(tickers.map(t => [t, null]));
 }
 
 // ── 종목 검색 ────────────────────────────────────
