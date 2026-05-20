@@ -230,6 +230,7 @@ async function _fetch(url) {
   const _parse = async (r) => {
     if (r.status === 429) throw Object.assign(new Error("Rate limited (429)"), { is429: true });
     if (r.status === 401) throw Object.assign(new Error("Unauthorized (401)"), { is401: true });
+    if (r.status === 404) throw Object.assign(new Error("Not found (404)"), { is404: true });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (data && typeof data.contents === "string") return JSON.parse(data.contents);
@@ -246,9 +247,9 @@ async function _fetch(url) {
         return await _parse(r);
       } catch (e) {
         if (e.is429) { _got429 = true; continue; }
+        if (e.is404) throw e;  // 404: 티커 없음 — 재시도해도 소용없어 즉시 실패
         if (e.is401) {
           // 401: Yahoo 세션 초기화 이슈 — 300ms 후 동일 프록시 즉시 재시도
-          // (첫 401로 Yahoo가 해당 IP를 인식하면 이후 요청은 200 반환)
           try {
             await new Promise(r => setTimeout(r, 300));
             const r2 = await fetch(p + encodeURIComponent(url), { cache: "no-store", signal: AbortSignal.timeout(10000) });
