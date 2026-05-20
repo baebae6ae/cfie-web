@@ -226,28 +226,32 @@ const _YF_PROXIES = [
 ];
 
 async function _fetch(url) {
-  // 프록시들을 병렬로 시도 → 가장 빨리 응답한 쪽 사용 (직접 요청 제거 — 항상 CORS 실패)
+  // 프록시를 순차 시도 (병렬 → 순차: 동시 요청 절반으로 감소 → 429 방지)
   const _parse = async (r) => {
+    if (r.status === 429) throw Object.assign(new Error("Rate limited (429)"), { is429: true });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (data && typeof data.contents === "string") return JSON.parse(data.contents);
     return typeof data === "string" ? JSON.parse(data) : data;
   };
-  const _try = () => Promise.any(
-    _YF_PROXIES.map(p =>
-      fetch(p + encodeURIComponent(url), {
-        cache: "no-store",                   // 브라우저 HTTP 캐시 완전 비활성화
-        signal: AbortSignal.timeout(10000),
-      }).then(_parse)
-    )
-  );
-  // 최대 3회 시도 (초기 1회 + 재시도 2회) — 네트워크 일시 불안정 대응
   for (let _attempt = 0; _attempt < 3; _attempt++) {
-    try { return await _try(); } catch (e) {
-      if (_attempt === 2) throw e;
-      await new Promise(r => setTimeout(r, 2000 * (_attempt + 1))); // 2s → 4s
+    let _got429 = false;
+    for (const p of _YF_PROXIES) {
+      try {
+        const r = await fetch(p + encodeURIComponent(url), {
+          cache: "no-store",
+          signal: AbortSignal.timeout(10000),
+        });
+        return await _parse(r);
+      } catch (e) {
+        if (e.is429) { _got429 = true; continue; }  // 429 → 다음 프록시로 즉시 전환
+        // 네트워크 오류 → 다음 프록시로
+      }
     }
+    // 모든 프록시 실패: 429면 5초, 그 외 2초 대기 후 재시도
+    if (_attempt < 2) await new Promise(r => setTimeout(r, _got429 ? 5000 : 2000));
   }
+  throw new Error("All proxies failed");
 }
 
 // ── OHLCV 데이터 (차트 데이터) ────────────────────

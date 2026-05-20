@@ -369,7 +369,7 @@ async function load52h(market, btn) {
       _h52Universe[market] = await res.json();
     }
     const universe = _h52Universe[market];
-    const BATCH = 8;
+    const BATCH = 3;  // 동시 요청 수 제한 (프록시 429 방지)
     const results = [];
     let _h52ScanIdx = 0;
     grid.innerHTML = "";
@@ -387,6 +387,7 @@ async function load52h(market, btn) {
         }
       }
       _h52ScanIdx = i + BATCH;
+      await new Promise(r => setTimeout(r, 200));  // 배치 간 200ms — 프록시 429 방지
     }
     _h52State.items = results;
     _h52State.offset = results.length;
