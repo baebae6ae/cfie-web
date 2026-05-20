@@ -229,6 +229,7 @@ async function _fetch(url) {
   // 프록시를 순차 시도 (병렬 → 순차: 동시 요청 절반으로 감소 → 429 방지)
   const _parse = async (r) => {
     if (r.status === 429) throw Object.assign(new Error("Rate limited (429)"), { is429: true });
+    if (r.status === 401) throw Object.assign(new Error("Unauthorized (401)"), { is401: true });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (data && typeof data.contents === "string") return JSON.parse(data.contents);
@@ -244,8 +245,18 @@ async function _fetch(url) {
         });
         return await _parse(r);
       } catch (e) {
-        if (e.is429) { _got429 = true; continue; }  // 429 → 다음 프록시로 즉시 전환
-        // 네트워크 오류 → 다음 프록시로
+        if (e.is429) { _got429 = true; continue; }
+        if (e.is401) {
+          // 401: Yahoo 세션 초기화 이슈 — 300ms 후 동일 프록시 즉시 재시도
+          // (첫 401로 Yahoo가 해당 IP를 인식하면 이후 요청은 200 반환)
+          try {
+            await new Promise(r => setTimeout(r, 300));
+            const r2 = await fetch(p + encodeURIComponent(url), { cache: "no-store", signal: AbortSignal.timeout(10000) });
+            return await _parse(r2);
+          } catch (_) {}
+          continue;
+        }
+        // 기타 네트워크 오류 → 다음 프록시로
       }
     }
     // 모든 프록시 실패: 429면 5초, 그 외 2초 대기 후 재시도
