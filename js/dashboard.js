@@ -98,30 +98,31 @@ function _shortName(name) {
 }
 
 // ── 상태 ───────────────────────────────────────────
-const _mapCache = {};
-const _mapMode  = { KR: "sector", US: "sector" };
+const _mapCache  = {};
+const _mapMode   = { KR: "sector", US: "sector" };
+const _allQuotes = {};  // KR+US 지수 누적 (ticker strip 점진 갱신용)
 let _h52Market  = "kospi";
 const _h52State = { offset: 0, limit: 10, hasMore: false, loading: false, items: [] };
 let _h52Universe = {};
 let _h52StopFlag = false;
 
-// ── 초기화 ─────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  loadMarket();
-  setTimeout(() => load52h("kospi", document.querySelector(".h52-tab")), 600);
-  loadMarketMap("KR");
-  setTimeout(() => loadMarketMap("US"), 200);  // 프록시 동시 요청 분산
+// ── 초기화 (순차 로딩 — 프록시 429 방지) ─────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  await _loadMarketGroup(KR_INDICES, "krQuotes", "krUpdated");  // ① KR 지수
+  await loadMarketMap("KR");                                     // ② KR 히트맵
+  await _loadMarketGroup(US_INDICES, "usQuotes", "usUpdated");  // ③ US 지수
+  await loadMarketMap("US");                                     // ④ US 히트맵
+  load52h("kospi", document.querySelector(".h52-tab"));         // ⑤ 52주 신고가 (백그라운드)
 });
 
-// ── 시장 지수 ─────────────────────────────────────────
-async function loadMarket() {
-  const allTickers = [...KR_INDICES, ...US_INDICES].map(i => i.ticker);
+// ── 시장 지수 (그룹별 순차 로딩) ──────────────────────────────────────
+async function _loadMarketGroup(indices, quotesId, updatedId) {
   for (let _attempt = 0; _attempt < 3; _attempt++) {
     try {
-      const quotes = await fetchMultiQuote(allTickers);
-      renderQuotes("krQuotes", KR_INDICES, quotes, "krUpdated");
-      renderQuotes("usQuotes", US_INDICES, quotes, "usUpdated");
-      renderTickerStrip([...KR_INDICES, ...US_INDICES], quotes);
+      const quotes = await fetchMultiQuote(indices.map(i => i.ticker));
+      renderQuotes(quotesId, indices, quotes, updatedId);
+      Object.assign(_allQuotes, quotes);
+      renderTickerStrip([...KR_INDICES, ...US_INDICES], _allQuotes);
       return;
     } catch(e) {
       console.warn("loadMarket 시도", _attempt + 1, "실패:", e.message);
