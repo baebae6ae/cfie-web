@@ -318,27 +318,31 @@ async function fetchQuote(ticker) {
   } catch { return null; }
 }
 
-// ── 배치 현재가 조회 (단일 API 호출 — 빠름) ──────────────────────
+// ── 배치 현재가 조회 (청크 병렬 처리 — 빠름) ────────────────────
 async function fetchBatchQuote(tickers) {
-  const MAX = 25;  // 25개씩 나눠 요청 — Yahoo Finance 배치 한계 우회
+  const MAX = 25;  // Yahoo Finance 배치 한계 — 25개씩 분할
   const dict = {};
-  for (let i = 0; i < tickers.length; i += MAX) {
-    const chunk = tickers.slice(i, i + MAX);
-    const url = `${_YF_BASE}/v7/finance/quote?symbols=${chunk.join(',')}`;
-    const json = await _fetch(url);
-    for (const r of (json?.quoteResponse?.result ?? [])) {
-      dict[r.symbol] = {
-        ticker:      r.symbol,
-        price:       r.regularMarketPrice ?? null,
-        prev:        r.regularMarketPreviousClose ?? null,
-        change:      r.regularMarketChange ?? null,
-        changePct:   r.regularMarketChangePercent ?? null,
-        currency:    r.currency ?? null,
-        name:        r.shortName || r.longName || r.symbol,
-        marketState: r.marketState ?? null,
-      };
-    }
-  }
+  // 청크 분할 후 병렬 요청 (기존 순차 → 병렬: 청크 수 × 더 빠름)
+  const chunks = [];
+  for (let i = 0; i < tickers.length; i += MAX) chunks.push(tickers.slice(i, i + MAX));
+  await Promise.allSettled(chunks.map(async (chunk) => {
+    try {
+      const url  = `${_YF_BASE}/v7/finance/quote?symbols=${chunk.join(',')}`;
+      const json = await _fetch(url);
+      for (const r of (json?.quoteResponse?.result ?? [])) {
+        dict[r.symbol] = {
+          ticker:      r.symbol,
+          price:       r.regularMarketPrice ?? null,
+          prev:        r.regularMarketPreviousClose ?? null,
+          change:      r.regularMarketChange ?? null,
+          changePct:   r.regularMarketChangePercent ?? null,
+          currency:    r.currency ?? null,
+          name:        r.shortName || r.longName || r.symbol,
+          marketState: r.marketState ?? null,
+        };
+      }
+    } catch (_) { /* 개별 청크 실패 → 해당 티커는 null로 처리됨 */ }
+  }));
   for (const t of tickers) { if (!(t in dict)) dict[t] = null; }
   return dict;
 }
