@@ -242,18 +242,29 @@ function renderChecklist() {
     if (ic) { ic.textContent = pass ? "☑" : "☐"; ic.style.color = pass ? "var(--bull,#2ea043)" : "var(--bear,#e53935)"; }
     if (vl) { vl.textContent = val; vl.style.color = pass ? "var(--bull,#2ea043)" : "var(--bear,#e53935)"; }
   }
-  const scorePass = _currentEntryScore >= 80;
-  const fisPass   = _currentFIS >= 80;
+  // 스캔과 동일한 기준 (entry>=65, FIS>=60, fresh>=0, R:R>=1.5)
+  const scorePass = _currentEntryScore >= 65;
+  const scoreOpt  = _currentEntryScore >= 80;   // 최적 진입 구간
+  const fisPass   = _currentFIS >= 60;
+  const fisOpt    = _currentFIS >= 80;           // 강한 추세
   const freshPass = _currentFreshness >= 0;
   const rrEntered = _currentRR > 0;
-  const rrPass    = _currentRR >= 2.0;
-  _upd("mch-score-icon","mch-score-val", scorePass,
-    _currentEntryScore > 0 ? _currentEntryScore.toFixed(0)+"점" : "—");
-  const fisStr = _currentFIS !== 0 ? (_currentFIS >= 0 ? "+" : "") + _currentFIS.toFixed(0) : "—";
+  const rrPass    = _currentRR >= 1.5;
+
+  const scoreLabel = _currentEntryScore > 0
+    ? _currentEntryScore.toFixed(0) + "점" + (scoreOpt ? " ★" : "")
+    : "—";
+  _upd("mch-score-icon","mch-score-val", scorePass, scoreLabel);
+
+  const fisStr = _currentFIS !== 0
+    ? (_currentFIS >= 0 ? "+" : "") + _currentFIS.toFixed(0) + (fisOpt ? " ★" : "")
+    : "—";
   _upd("mch-fis-icon","mch-fis-val", fisPass, fisStr);
+
   const freshStr = _currentFreshness > 0 ? "+"+_currentFreshness.toFixed(1)+"pt"
     : _currentFreshness < 0 ? _currentFreshness.toFixed(1)+"pt" : "0pt";
   _upd("mch-fresh-icon","mch-fresh-val", freshPass, _currentEntryScore > 0 ? freshStr : "—");
+
   if (!rrEntered) {
     const ic2 = document.getElementById("mch-rr-icon");
     const vl2 = document.getElementById("mch-rr-val");
@@ -262,22 +273,26 @@ function renderChecklist() {
   } else {
     _upd("mch-rr-icon","mch-rr-val", rrPass, _currentRR.toFixed(2)+" : 1");
   }
+
   const vEl = document.getElementById("mechVerdict");
   if (!vEl) return;
   if (_currentEntryScore === 0) { vEl.textContent = "차트 로드 후 계산"; vEl.className = "mech-verdict mech-wait"; return; }
   const basePass = scorePass && fisPass && freshPass;
   if (!basePass) {
-    const failed = [!scorePass&&"진입점수",!fisPass&&"FIS",!freshPass&&"신선도"].filter(Boolean);
-    vEl.textContent = "⛔ "+failed.join("·")+" 미충족 — 관망";
+    const failed = [!scorePass&&"진입점수(65미만)",!fisPass&&"FIS(60미만)",!freshPass&&"신선도"].filter(Boolean);
+    vEl.textContent = "⛔ "+failed.join("·")+" — 관망";
     vEl.className = "mech-verdict mech-no";
   } else if (!rrEntered) {
-    vEl.textContent = "⚡ 기본 3조건 충족 — 평단가 입력 후 R:R 확인";
+    const optNote = (scoreOpt && fisOpt) ? " (최적 구간 ★)" : "";
+    vEl.textContent = "⚡ 기본 3조건 충족"+optNote+" — 평단가 입력 후 R:R 확인";
     vEl.className = "mech-verdict mech-wait";
   } else if (!rrPass) {
     vEl.textContent = "⛔ R:R "+_currentRR.toFixed(2)+" 불리 — 진입 포기";
     vEl.className = "mech-verdict mech-no";
   } else {
-    vEl.textContent = "✅ 전체 조건 충족 — 기계적 진입 가능";
+    const grade = (scoreOpt && fisOpt) ? "✅ 최적 조건 충족 ★ — 기계적 진입 적극 고려"
+                                       : "✅ 조건 충족 — 기계적 진입 가능";
+    vEl.textContent = grade;
     vEl.className = "mech-verdict mech-ok";
   }
 }

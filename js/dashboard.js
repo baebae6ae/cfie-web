@@ -350,6 +350,25 @@ async function _check52h(ticker, name) {
   } catch { return null; }
 }
 
+// ── 52주 신고가 일별 캐시 (하루 첫 진입만 스캔, 중단 시 재개) ──────────
+function _h52GetCache(market) {
+  try {
+    const raw = localStorage.getItem("cfie_h52_" + market);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    const today = new Date().toISOString().slice(0, 10);
+    return c.date === today ? c : null;  // 날짜 다르면 무효
+  } catch { return null; }
+}
+function _h52SetCache(market, items, uniOffset, complete) {
+  try {
+    localStorage.setItem("cfie_h52_" + market, JSON.stringify({
+      date: new Date().toISOString().slice(0, 10),
+      items, uniOffset, complete
+    }));
+  } catch {}
+}
+
 async function load52h(market, btn) {
   document.querySelectorAll(".h52-tab").forEach(b => b.classList.remove("active"));
   if (btn) btn.classList.add("active");
@@ -358,11 +377,11 @@ async function load52h(market, btn) {
   await new Promise(r => setTimeout(r, 50));
   _h52StopFlag = false;
   const grid = document.getElementById("high52Grid");
-  grid.innerHTML = '<div class="high52-loading">실시간 조회 중… (Yahoo Finance)</div>';
   _h52State.items = [];
   _h52State.offset = 0;
   _h52State.hasMore = false;
   _update52hMoreButton();
+
   try {
     if (!_h52Universe[market]) {
       const res = await fetch(`data/universe_${market}.json`);
@@ -370,30 +389,61 @@ async function load52h(market, btn) {
       _h52Universe[market] = await res.json();
     }
     const universe = _h52Universe[market];
-    const BATCH = 3;  // 동시 요청 수 제한 (프록시 429 방지)
-    const results = [];
-    let _h52ScanIdx = 0;
-    grid.innerHTML = "";
-    for (let i = 0; i < universe.length && results.length < 10 && !_h52StopFlag; i += BATCH) {
+
+    // ① 오늘 완료된 캐시 → 즉시 표시 (네트워크 0건)
+    const cached = _h52GetCache(market);
+    if (cached?.complete) {
+      _h52State.items      = cached.items;
+      _h52State.offset     = cached.items.length;
+      _h52State._uniOffset = cached.uniOffset;
+      _h52State.hasMore    = false;
+      grid.innerHTML = cached.items.length
+        ? cached.items.map(s => _render52hCard(s)).join("")
+        : '<div class="high52-empty">해당 시장에서 52주 신고가 종목을 찾지 못했습니다.</div>';
+      _update52hMoreButton();
+      return;
+    }
+
+    // ② 중단된 캐시 → 기존 결과 표시 후 중단점부터 재개
+    const resumeItems = cached?.items    || [];
+    const startOffset = cached?.uniOffset ?? 0;
+    const results     = [...resumeItems];
+    const hasResume   = resumeItems.length > 0;
+    grid.innerHTML = hasResume
+      ? resumeItems.map(s => _render52hCard(s)).join("")
+      : '<div class="high52-loading">실시간 조회 중… (Yahoo Finance)</div>';
+    let loadingCleared = hasResume;
+
+    const BATCH = 3;
+    let scanIdx = startOffset;
+
+    for (let i = startOffset; i < universe.length && results.length < 10 && !_h52StopFlag; i += BATCH) {
       const batch = universe.slice(i, i + BATCH);
       const settled = await Promise.allSettled(
         batch.map(({ ticker, name }) => _check52h(ticker, name))
       );
       for (const r of settled) {
         if (r.status === "fulfilled" && r.value) {
+          if (!loadingCleared) { grid.innerHTML = ""; loadingCleared = true; }
           results.push(r.value);
           const tmp = document.createElement("div");
           tmp.innerHTML = _render52hCard(r.value);
           grid.appendChild(tmp.firstElementChild);
         }
       }
-      _h52ScanIdx = i + BATCH;
-      await new Promise(r => setTimeout(r, 200));  // 배치 간 200ms — 프록시 429 방지
+      scanIdx = i + BATCH;
+      _h52SetCache(market, results, scanIdx, false);  // 배치마다 진행상황 저장
+      await new Promise(r => setTimeout(r, 200));
     }
-    _h52State.items = results;
-    _h52State.offset = results.length;
-    _h52State._uniOffset = _h52ScanIdx;
-    _h52State.hasMore = _h52ScanIdx < universe.length && results.length >= 10;
+
+    const complete = results.length >= 10 || scanIdx >= universe.length;
+    _h52SetCache(market, results, scanIdx, complete);
+
+    _h52State.items      = results;
+    _h52State.offset     = results.length;
+    _h52State._uniOffset = scanIdx;
+    _h52State.hasMore    = !complete && scanIdx < universe.length;
+
     if (!results.length) {
       grid.innerHTML = '<div class="high52-empty">해당 시장에서 52주 신고가 종목을 찾지 못했습니다.</div>';
     }
@@ -419,7 +469,8 @@ async function loadMore52h() {
     const universe = _h52Universe[market];
     const BATCH = 3;
     const newResults = [];
-    let startIdx = _h52State._uniOffset || _h52State.items.length * 3;
+    let startIdx = _h52State._uniOffset ?? universe.length;
+
     for (let i = startIdx; i < universe.length && newResults.length < 10 && !_h52StopFlag; i += BATCH) {
       const batch = universe.slice(i, i + BATCH);
       const settled = await Promise.allSettled(
@@ -434,12 +485,16 @@ async function loadMore52h() {
         }
       }
       startIdx = i + BATCH;
+      _h52SetCache(market, [..._h52State.items, ...newResults], startIdx, false);
     }
+
     _h52State.items.push(...newResults);
     _h52State._uniOffset = startIdx;
-    _h52State.hasMore = startIdx < universe.length && newResults.length >= 10;
-    if (!newResults.length && _h52State.items.length) {
-      // 더 이상 종목 없음
+    const complete = startIdx >= universe.length;
+    _h52SetCache(market, _h52State.items, startIdx, complete);
+    _h52State.hasMore = !complete && newResults.length >= 10;
+
+    if (!newResults.length) {
       const note = document.createElement("div");
       note.className = "high52-empty";
       note.style.marginTop = "8px";
