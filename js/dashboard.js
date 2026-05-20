@@ -366,7 +366,7 @@ async function load52h(market, btn) {
       _h52Universe[market] = await res.json();
     }
     const universe = _h52Universe[market];
-    const BATCH = 3;
+    const BATCH = 8;
     const results = [];
     let _h52ScanIdx = 0;
     grid.innerHTML = "";
