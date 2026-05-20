@@ -302,7 +302,7 @@ function _toWeekly(bars) {
 
 async function _check52h(ticker, name) {
   try {
-    const { bars } = await fetchOHLCV(ticker, "2y", "1d");
+    const { bars } = await fetchOHLCV(ticker, "1y", "1d");
     if (!bars || bars.length < 30) return null;
 
     // ── 거래중지 종목 제외 ──
