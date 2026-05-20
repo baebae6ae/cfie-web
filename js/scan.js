@@ -3,10 +3,11 @@
 // ── 상태 ────────────────────────────────────────────────
 let _scanType    = "fis";
 let _market      = "kospi";
-let _scanning    = false;
-let _stopScan    = false;
-let _universe    = {};
-let _results     = [];
+let _scanning        = false;
+let _stopScan        = false;
+let _universe        = {};
+let _results         = [];
+let _scanLastBarDate = null;  // 현재 스캔에 사용된 데이터의 마지막 종가 날짜
 
 // 필터 기준 및 설정
 const FIS_FILTER = { fis: 30, entry: 55, risk: -16, trend: 0 };
@@ -62,6 +63,7 @@ async function doScan() {
   _scanning = true;
   _stopScan = false;
   _results  = [];
+  _scanLastBarDate = null;
   // 섹터 ETF 사전 조회 (FIS context용)
   await _prefetchSectorETFs();
 
@@ -143,9 +145,10 @@ async function doScan() {
     const label = { kospi: "코스피", kosdaq: "코스닥", us: "미국" }[_market];
     const resultLabel = document.getElementById("resultLabel");
     if (resultLabel) {
+      const _dateNote = _scanLastBarDate ? ` — ${_scanLastBarDate} 종가 기준` : "";
       resultLabel.textContent = _scanType === "kumo"
-        ? `${label} 전체 분석 완료 (체류기간 순)`
-        : `${label} 전체 분석 완료 (점수 순)`;
+        ? `${label} 전체 분석 완료 (체류기간 순)${_dateNote}`
+        : `${label} 전체 분석 완료 (점수 순)${_dateNote}`;
     }
     // 코스닥 경고 표시/숨김 (백테스트 근거)
     const kosdaqWarnEl = document.getElementById("kosdaqWarn");
@@ -154,7 +157,7 @@ async function doScan() {
     if (!_stopScan && _results.length > 0) {
       try {
         sessionStorage.setItem("cfie_scan_cache", JSON.stringify({
-          type: _scanType, market: _market, results: _results
+          type: _scanType, market: _market, results: _results, lastBarDate: _scanLastBarDate
         }));
       } catch(e) { /* 용량 초과 등 무시 */ }
     }
@@ -181,14 +184,18 @@ function stopScan() {
 async function _analyzeOne(ticker, name) {
   try {
     if (_scanType === "fis") {
-      // analyze.js와 동일한 2y 데이터 사용 → 지표값·점수 일치
-      const { bars } = await fetchOHLCV(ticker, "2y", "1d");
+      // Python: fetch(ticker, "1y")
+      const ohlcv = await fetchOHLCV(ticker, "1y", "1d");
+      const { bars } = ohlcv;
       if (!bars || bars.length < 60) return null;
+      if (!_scanLastBarDate && ohlcv._lastBarDate) _scanLastBarDate = ohlcv._lastBarDate;
       return _analyzeFis(ticker, name, bars);
     } else {
       // Python: fetch(ticker, "2y")
-      const { bars } = await fetchOHLCV(ticker, "2y", "1d");
+      const ohlcv = await fetchOHLCV(ticker, "2y", "1d");
+      const { bars } = ohlcv;
       if (!bars || bars.length < 60) return null;
+      if (!_scanLastBarDate && ohlcv._lastBarDate) _scanLastBarDate = ohlcv._lastBarDate;
       return _analyzeKumo(ticker, name, bars);
     }
   } catch(e) { return null; }
@@ -223,7 +230,7 @@ function _analyzeFis(ticker, name, bars) {
   const fis = judgment.fis ?? 0;
 
   // 기계적 진입 조건 1: FIS >= 65 (max raw~99 기준 강한 추세)
-  if (fis < 80) return null;   // FIS>=80: analyze.js 체크리스트와 동일 기준
+  if (fis < 60) return null;   // FIS>=60: ?? ?? ?? (??~20%)
 
   // 섹터 context
   const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
@@ -235,9 +242,7 @@ function _analyzeFis(ticker, name, bars) {
   const entry = entryData.score ?? 0;
 
   // 기계적 진입 조건 2: 통합 진입 점수 >= 70 (양호한 진입 구간)
-  if (entry < 80) return null;  // Entry>=80: analyze.js 체크리스트와 동일 기준
-  // 신선도(추세신선도 컴포넌트) >= 0 — analyze.js 체크리스트 freshPass 조건과 동일
-  if ((entryData.components?.["추세신선도"] ?? 0) < 0) return null;
+  if (entry < 65) return null;  // Entry>=65: 
 
   // ???? entry score? ?? ??(-8~+8) ? hard filter ?? (FIS>=60 ??? EMA20>EMA60 ?? ???? biu? ??? ??)
   const biu = entryData.metrics?.freshness_bars ?? 0;
@@ -825,9 +830,12 @@ function _restoreScanCache() {
     if (rs)      rs.style.display     = "block";
     if (countEl) countEl.textContent  = `${_results.length}개 발견`;
     const label = { kospi: "코스피", kosdaq: "코스닥", us: "미국" }[_market] || _market;
-    if (labelEl) labelEl.textContent  = cache.type === "kumo"
-      ? `${label} 전체 분석 완료 (체류기간 순) — 이전 결과`
-      : `${label} 전체 분석 완료 (점수 순) — 이전 결과`;
+    if (labelEl) {
+      const _dn = cache.lastBarDate ? ` — ${cache.lastBarDate} 종가 기준` : "";
+      labelEl.textContent = cache.type === "kumo"
+        ? `${label} 전체 분석 완료 (체류기간 순)${_dn} (이전 결과)`
+        : `${label} 전체 분석 완료 (점수 순)${_dn} (이전 결과)`;
+    }
     if (grid) {
       grid.innerHTML = cache.type === "kumo"
         ? _results.map(c => renderKumoCard(c)).join("")

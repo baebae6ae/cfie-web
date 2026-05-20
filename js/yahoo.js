@@ -269,8 +269,15 @@ async function _fetch(url) {
 // ── OHLCV 데이터 (차트 데이터) ────────────────────
 async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
   const _ck = `ohlcv_${ticker}_${range}_${interval}`;
-  const _cached = _lsGet(_ck);
-  if (_cached) return _cached;
+  // 날짜 기반 캐시: 당일 처음 1회만 fetch (종가 형성 기준)
+  const _today = new Date().toISOString().slice(0, 10);
+  try {
+    const _raw = localStorage.getItem(_CACHE_PFX + _ck);
+    if (_raw) {
+      const _c = JSON.parse(_raw);
+      if (_c.fetchDate === _today && _c.data) return { ..._c.data, _lastBarDate: _c.lastBarDate };
+    }
+  } catch {}
   const url = `${_YF_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&events=div%2Csplit`;
   const json = await _fetch(url);
   const result = json?.chart?.result?.[0];
@@ -291,8 +298,11 @@ async function fetchOHLCV(ticker, range = "2y", interval = "1d") {
   const unique = Array.from(new Map(bars.map(b => [b.time, b])).values());
   unique.sort((a, b) => (a.time > b.time ? 1 : -1));
   const _res = { bars: unique, meta: result.meta };
-  _lsSet(_ck, _res);
-  return _res;
+  const lastBarDate = unique.length > 0 ? unique[unique.length - 1].time : null;
+  try {
+    localStorage.setItem(_CACHE_PFX + _ck, JSON.stringify({ fetchDate: _today, lastBarDate, data: _res }));
+  } catch {}
+  return { ..._res, _lastBarDate: lastBarDate };
 }
 
 // ── 단일 현재가 (v8 chart, range=5d interval=1d — meta보다 bars로 계산이 정확) ──
