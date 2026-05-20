@@ -123,13 +123,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ── 시장 지수 ─────────────────────────────────────────
 async function loadMarket() {
-  try {
-    const allTickers = [...KR_INDICES, ...US_INDICES].map(i => i.ticker);
-    const quotes = await fetchMultiQuote(allTickers);
-    renderQuotes("krQuotes", KR_INDICES, quotes, "krUpdated");
-    renderQuotes("usQuotes", US_INDICES, quotes, "usUpdated");
-    renderTickerStrip([...KR_INDICES, ...US_INDICES], quotes);
-  } catch(e) { console.error("market load error", e); }
+  const allTickers = [...KR_INDICES, ...US_INDICES].map(i => i.ticker);
+  for (let _attempt = 0; _attempt < 3; _attempt++) {
+    try {
+      const quotes = await fetchMultiQuote(allTickers);
+      renderQuotes("krQuotes", KR_INDICES, quotes, "krUpdated");
+      renderQuotes("usQuotes", US_INDICES, quotes, "usUpdated");
+      renderTickerStrip([...KR_INDICES, ...US_INDICES], quotes);
+      return;
+    } catch(e) {
+      console.warn("loadMarket 시도", _attempt + 1, "실패:", e.message);
+      if (_attempt < 2) await new Promise(r => setTimeout(r, 3000 * (_attempt + 1)));
+    }
+  }
 }
 
 function renderTickerStrip(indices, quotes) {
@@ -187,33 +193,38 @@ async function loadMarketMap(region) {
   const body   = document.getElementById(bodyId);
   if (!body) return;
   if (_mapCache[region]) { _drawMap(region, body, _mapCache[region]); return; }
-  body.innerHTML = '<div class="map-loading">히트맵 로딩 중…</div>';
   const sectors = region === "KR" ? KR_SECTORS : US_SECTORS;
-  try {
-    // 전체 티커 수집
-    const allTickers = sectors.flatMap(([, stocks]) => stocks.map(([t]) => t));
-    const quotes = await fetchMultiQuote(allTickers);
-    // stocks 배열 생성
-    const stocks = [];
-    const sectorAggMap = {};
-    for (const [sectorName, stockList] of sectors) {
-      const changePcts = [];
-      for (const [ticker, name] of stockList) {
-        const q = quotes[ticker] || {};
-        const changePct = q.changePct ?? null;  // null 유지, 0으로 채우지 않음
-        const short = _shortName(name);
-        stocks.push({ ticker, name, short, change_pct: changePct != null ? Math.round(changePct * 100) / 100 : null, sector: sectorName });
-        if (changePct != null) changePcts.push(changePct);  // null 제외하고 평균
+  const allTickers = sectors.flatMap(([, stocks]) => stocks.map(([t]) => t));
+  for (let _attempt = 0; _attempt < 3; _attempt++) {
+    body.innerHTML = _attempt === 0
+      ? '<div class="map-loading">히트맵 로딩 중…</div>'
+      : `<div class="map-loading">히트맵 로딩 중… (재시도 ${_attempt}/2)</div>`;
+    try {
+      const quotes = await fetchMultiQuote(allTickers);
+      // stocks 배열 생성
+      const stocks = [];
+      const sectorAggMap = {};
+      for (const [sectorName, stockList] of sectors) {
+        const changePcts = [];
+        for (const [ticker, name] of stockList) {
+          const q = quotes[ticker] || {};
+          const changePct = q.changePct ?? null;  // null 유지, 0으로 채우지 않음
+          const short = _shortName(name);
+          stocks.push({ ticker, name, short, change_pct: changePct != null ? Math.round(changePct * 100) / 100 : null, sector: sectorName });
+          if (changePct != null) changePcts.push(changePct);  // null 제외하고 평균
+        }
+        const avg = changePcts.length ? changePcts.reduce((a,b)=>a+b,0)/changePcts.length : null;
+        sectorAggMap[sectorName] = { name: sectorName, change_pct: avg != null ? Math.round(avg * 100) / 100 : null, count: stockList.length };
       }
-      const avg = changePcts.length ? changePcts.reduce((a,b)=>a+b,0)/changePcts.length : null;
-      sectorAggMap[sectorName] = { name: sectorName, change_pct: avg != null ? Math.round(avg * 100) / 100 : null, count: stockList.length };
+      const sectorList = sectors.map(([name]) => sectorAggMap[name]);
+      const data = { stocks, sectors: sectorList };
+      _mapCache[region] = data;
+      _drawMap(region, body, data);
+      return;
+    } catch(e) {
+      if (_attempt < 2) await new Promise(r => setTimeout(r, 3000 * (_attempt + 1)));
+      else body.innerHTML = '<div class="map-loading" style="color:var(--neutral-500);font-size:0.8rem">히트맵 로딩 실패 — 페이지를 새로고침 해주세요</div>';
     }
-    const sectorList = sectors.map(([name]) => sectorAggMap[name]);
-    const data = { stocks, sectors: sectorList };
-    _mapCache[region] = data;
-    _drawMap(region, body, data);
-  } catch(e) {
-    body.innerHTML = '<div class="map-loading" style="color:var(--neutral-500);font-size:0.8rem">히트맵 데이터 로딩 실패</div>';
   }
 }
 

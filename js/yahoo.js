@@ -233,7 +233,7 @@ async function _fetch(url) {
     if (data && typeof data.contents === "string") return JSON.parse(data.contents);
     return typeof data === "string" ? JSON.parse(data) : data;
   };
-  return Promise.any(
+  const _try = () => Promise.any(
     _YF_PROXIES.map(p =>
       fetch(p + encodeURIComponent(url), {
         cache: "no-store",                   // 브라우저 HTTP 캐시 완전 비활성화
@@ -241,6 +241,13 @@ async function _fetch(url) {
       }).then(_parse)
     )
   );
+  // 최대 3회 시도 (초기 1회 + 재시도 2회) — 네트워크 일시 불안정 대응
+  for (let _attempt = 0; _attempt < 3; _attempt++) {
+    try { return await _try(); } catch (e) {
+      if (_attempt === 2) throw e;
+      await new Promise(r => setTimeout(r, 2000 * (_attempt + 1))); // 2s → 4s
+    }
+  }
 }
 
 // ── OHLCV 데이터 (차트 데이터) ────────────────────

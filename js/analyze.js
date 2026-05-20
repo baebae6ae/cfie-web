@@ -36,6 +36,7 @@ async function loadChart(ticker) {
   const main    = document.getElementById("analyzeMain");
   
   overlay.style.display = "flex";
+  overlay.innerHTML = '<div class="spinner"></div><p style="margin-top:16px;color:var(--text2)">차트 데이터 분석 중…</p>';
   main.style.display    = "none";
 
   try {
@@ -109,9 +110,13 @@ async function loadChart(ticker) {
 
   } catch(e) {
     console.error(e);
-    showToast("차트 로드 실패: " + e.message, "error");
-    overlay.style.display = "none";
-    main.style.display    = "block";
+    overlay.innerHTML = `
+      <div style="text-align:center">
+        <div style="color:var(--danger,#e53935);margin-bottom:16px;font-size:0.9rem">⚠️ 차트 로드 실패<br><small style="opacity:.7">${e.message}</small></div>
+        <button onclick="reloadChart()" style="padding:8px 24px;background:var(--primary,#2563eb);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem">다시 시도</button>
+      </div>`;
+    overlay.style.display = "flex";
+    main.style.display = "none";
   }
 }
 
