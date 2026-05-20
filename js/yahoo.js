@@ -322,23 +322,18 @@ async function fetchQuote(ticker) {
   } catch { return null; }
 }
 
-// ── 배치 현재가 조회 (청크 병렬 처리 + 10분 세션 캐시) ────────────────
+// ── 배치 현재가 조회 (청크 병렬 처리 — 빠름) ────────────────────
 async function fetchBatchQuote(tickers) {
   const MAX = 25;  // Yahoo Finance 배치 한계 — 25개씩 분할
   const dict = {};
-  // 청크 분할 후 병렬 요청
   const chunks = [];
   for (let i = 0; i < tickers.length; i += MAX) chunks.push(tickers.slice(i, i + MAX));
   await Promise.allSettled(chunks.map(async (chunk) => {
-    const ck = "bq_" + chunk.join(",");
-    const cached = _ssGet(ck);  // 10분 세션 캐시 — 새로고침해도 재요청 안 함
-    if (cached) { Object.assign(dict, cached); return; }
     try {
       const url  = `${_YF_BASE}/v7/finance/quote?symbols=${chunk.join(',')}`;
       const json = await _fetch(url);
-      const partial = {};
       for (const r of (json?.quoteResponse?.result ?? [])) {
-        partial[r.symbol] = {
+        dict[r.symbol] = {
           ticker:      r.symbol,
           price:       r.regularMarketPrice ?? null,
           prev:        r.regularMarketPreviousClose ?? null,
@@ -349,9 +344,7 @@ async function fetchBatchQuote(tickers) {
           marketState: r.marketState ?? null,
         };
       }
-      Object.assign(dict, partial);
-      _ssSet(ck, partial);  // 캐시 저장
-    } catch (_) { /* 청크 실패 → null 처리 */ }
+    } catch (_) { /* 개별 청크 실패 → 해당 티커는 null로 처리됨 */ }
   }));
   for (const t of tickers) { if (!(t in dict)) dict[t] = null; }
   return dict;
