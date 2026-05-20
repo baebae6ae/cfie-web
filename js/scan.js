@@ -181,8 +181,8 @@ function stopScan() {
 async function _analyzeOne(ticker, name) {
   try {
     if (_scanType === "fis") {
-      // Python: fetch(ticker, "1y")
-      const { bars } = await fetchOHLCV(ticker, "1y", "1d");
+      // analyze.js와 동일한 2y 데이터 사용 → 지표값·점수 일치
+      const { bars } = await fetchOHLCV(ticker, "2y", "1d");
       if (!bars || bars.length < 60) return null;
       return _analyzeFis(ticker, name, bars);
     } else {
@@ -223,7 +223,7 @@ function _analyzeFis(ticker, name, bars) {
   const fis = judgment.fis ?? 0;
 
   // 기계적 진입 조건 1: FIS >= 65 (max raw~99 기준 강한 추세)
-  if (fis < 60) return null;   // FIS>=60: ?? ?? ?? (??~20%)
+  if (fis < 80) return null;   // FIS>=80: analyze.js 체크리스트와 동일 기준
 
   // 섹터 context
   const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
@@ -235,7 +235,9 @@ function _analyzeFis(ticker, name, bars) {
   const entry = entryData.score ?? 0;
 
   // 기계적 진입 조건 2: 통합 진입 점수 >= 70 (양호한 진입 구간)
-  if (entry < 65) return null;  // Entry>=65: 
+  if (entry < 80) return null;  // Entry>=80: analyze.js 체크리스트와 동일 기준
+  // 신선도(추세신선도 컴포넌트) >= 0 — analyze.js 체크리스트 freshPass 조건과 동일
+  if ((entryData.components?.["추세신선도"] ?? 0) < 0) return null;
 
   // ???? entry score? ?? ??(-8~+8) ? hard filter ?? (FIS>=60 ??? EMA20>EMA60 ?? ???? biu? ??? ??)
   const biu = entryData.metrics?.freshness_bars ?? 0;
