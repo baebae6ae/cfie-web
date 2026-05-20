@@ -221,8 +221,8 @@ function _lsSet(key, data) {
 
 const _YF_BASE = "https://query1.finance.yahoo.com";
 const _YF_PROXIES = [
-  "https://corsproxy.io/?url=",
-  "https://api.allorigins.win/raw?url=",
+  "https://spring-block-72b2.eowns0606.workers.dev/?url=",  // 전용 Cloudflare Worker (속도제한 없음)
+  "https://corsproxy.io/?url=",                              // 백업
 ];
 
 async function _fetch(url) {
