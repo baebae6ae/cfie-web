@@ -216,6 +216,34 @@ function onAvgCostChange() {
   const _rrRisk   = avgCost > 0 && _ema20Stop > 0 && avgCost > _ema20Stop ? avgCost - _ema20Stop : 0;
   const _rrReward = _currentATR > 0 ? _currentATR * 3 : 0;
   const rr = _rrRisk > 0 && _rrReward > 0 ? _rrReward / _rrRisk : 0;
+
+  // ── R:R 기준 손절선 표시 (EMA20 − ATR) ──
+  const _ema20StopDisp = (_currentIsKRW && _ema20Stop > 0) ? Math.round(_ema20Stop) : +_ema20Stop.toFixed(dec);
+  const slEMA20ATREl  = document.getElementById("slEMA20ATR");
+  const slEMA20ATRPctEl = document.getElementById("slEMA20ATRPct");
+  if (slEMA20ATREl) slEMA20ATREl.textContent = _ema20StopDisp > 0 ? fmt(_ema20StopDisp, dec) : "—";
+  if (slEMA20ATRPctEl) {
+    if (_ema20StopDisp > 0 && avgCost > 0) {
+      const _sp = (_ema20StopDisp - avgCost) / avgCost * 100;
+      slEMA20ATRPctEl.textContent = ((_sp >= 0) ? "+" : "") + _sp.toFixed(1) + "%";
+      slEMA20ATRPctEl.style.color = _sp >= 0 ? "var(--bull,#2ea043)" : "var(--bear,#e53935)";
+    } else slEMA20ATRPctEl.textContent = "";
+  }
+
+  // ── R:R 기준 목표가 표시 (ATR×3) ──
+  const _tp3Raw = (avgCost > 0 && _currentATR > 0) ? avgCost + _currentATR * 3 : 0;
+  const _tp3    = (_currentIsKRW && _tp3Raw > 0) ? Math.round(_tp3Raw) : +_tp3Raw.toFixed(dec);
+  const tp3El    = document.getElementById("tpPrice3");
+  const tp3PctEl = document.getElementById("tpPct3");
+  if (tp3El) tp3El.textContent = _tp3 > 0 ? fmt(_tp3, dec) : "—";
+  if (tp3PctEl) {
+    if (_tp3 > 0 && avgCost > 0) {
+      const _tp = (_tp3 - avgCost) / avgCost * 100;
+      tp3PctEl.textContent = "+" + _tp.toFixed(1) + "%";
+      tp3PctEl.style.color = "var(--bull,#2ea043)";
+    } else tp3PctEl.textContent = "";
+  }
+
   if (rrEl)    rrEl.textContent = rr > 0 ? rr.toFixed(2) + " : 1" : "—";
   if (rrSigEl) {
     if (rr > 0) {

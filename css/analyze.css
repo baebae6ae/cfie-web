@@ -1015,6 +1015,30 @@
 }﻿
 /* -- 익절선 / 손익비 추가 스타일 */
 .sl-divider { height: 1px; background: var(--border2); margin: 4px 0; }
+/* ── R:R 기준 박스 ── */
+.sl-rr-basis-box {
+  background: var(--neutral-50, rgba(0,0,0,0.03));
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.sl-rr-basis-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.sl-stop-key { color: var(--bear, #e53935) !important; }
+.sl-stop-val { color: var(--bear, #e53935) !important; }
+.sl-ref-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text3);
+  margin: 4px 0 3px;
+}
 .sl-tp-key  { color: var(--bull, #2ea043) !important; }
 .sl-tp-val  { color: var(--bull, #2ea043) !important; }
 .sl-tp-item .sl-val { color: var(--bull, #2ea043); }﻿
