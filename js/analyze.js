@@ -211,10 +211,11 @@ function onAvgCostChange() {
       tp2PctEl.style.color = "var(--bull,#2ea043)";
     } else tp2PctEl.textContent = "";
   }
-  // 손익비(R:R) = TP1까지 수익 / Chandelier 손절까지 손실
-  const stopDist = avgCost > 0 && ce > 0 ? avgCost - ce : 0;
-  const tp1Dist  = avgCost > 0 && tp1 > 0 ? tp1 - avgCost : 0;
-  const rr = stopDist > 0 && tp1Dist > 0 ? tp1Dist / stopDist : 0;
+  // 손익비(R:R) = 기계적 스캔과 동일 공식: ATR×3 목표 / (현재가 − EMA20−ATR) 손절
+  const _ema20Stop = (_currentEMA20 > 0 && _currentATR > 0) ? _currentEMA20 - _currentATR : 0;
+  const _rrRisk   = avgCost > 0 && _ema20Stop > 0 && avgCost > _ema20Stop ? avgCost - _ema20Stop : 0;
+  const _rrReward = _currentATR > 0 ? _currentATR * 3 : 0;
+  const rr = _rrRisk > 0 && _rrReward > 0 ? _rrReward / _rrRisk : 0;
   if (rrEl)    rrEl.textContent = rr > 0 ? rr.toFixed(2) + " : 1" : "—";
   if (rrSigEl) {
     if (rr > 0) {
@@ -1183,8 +1184,8 @@ function renderBacktest(fisBars) {
     html += diag;
 
     // ── 범례 안내 ──
-    // ── 지표 유효성 진단: 점수↑ → MFE↑ 여부 ──
-    const keys2 = ["90+", "80-90", "65-80", "50-65", "50미만"];
+    // ── 지표 유효성 진단: 점수↑ → MFE↑ 여부 (50미만 제외: 구간 너무 넓어 시장 기저율 혼재) ──
+    const keys2 = ["90+", "80-90", "65-80", "50-65"];
     const mfeVals = keys2.map(k => buckets[k].counts.mfe ? buckets[k].wins.mfe / buckets[k].counts.mfe * 100 : null);
     // 데이터 있는 구간만 추출해 단조감소 체크
     const validMfe = mfeVals.filter(v => v !== null);
