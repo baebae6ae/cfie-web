@@ -1014,34 +1014,40 @@ function runBacktest(fisBars) {
     if (hadMFE) buckets[key].wins.mfe++;
 
 
-    // ?? ??? ?? ??: FIS>=60 AND ????>=65 (?? ?? ??? ??) ??
+    // 기계적 전략 시뮬: FIS>=60 AND 진입점수>=65 (신호 조건 일치) 시
     if (score >= 65 && (fisBars[i].FIS || 0) >= 60 && i + 1 < n && i <= n - 26) {
       const atr = fisBars[i].ATR14 || 0;
       const ema20 = fisBars[i].EMA20 || 0;
       if (atr > 0 && ema20 > 0) {
-        const stopPrice = ema20 - atr;          // EMA20-ATR (?? ??)
+        const stopPrice = ema20 - atr;          // EMA20-ATR (기본 손절)
         const nextBar = fisBars[i + 1];
         const entryPrice = nextBar ? (nextBar.open || nextBar.close || 0) : 0;
         const rr_risk = entryPrice - stopPrice;
         if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice && (atr * 3) / rr_risk >= 1.5) {
-          const tp1mech = entryPrice + atr * 2;  // 1??? ATR?2
-          const tp2mech = entryPrice + atr * 3;  // 2??? ATR?3
-          const risk = rr_risk;
+          const tp1Price = entryPrice + atr * 2;  // 1차익절: ATR×2
+          const tp2Price = entryPrice + atr * 3;  // 2차익절: ATR×3
           let exitPrice = (fisBars[Math.min(i + 25, n - 1)]?.close || entryPrice);
-          let exitType = "????";
+          let exitType = "기간만료";
           let tp1Hit = false;
           for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
             const bj = fisBars[j];
             if (!bj) continue;
-            if ((bj.low || Infinity) <= (tp1Hit ? entryPrice : stopPrice)) {
-              exitPrice = tp1Hit ? entryPrice : stopPrice; exitType = "??"; break;
+            const stopLine = tp1Hit ? entryPrice : stopPrice;
+            if ((bj.low || Infinity) <= stopLine) {
+              exitPrice = stopLine;
+              exitType = tp1Hit ? "브레이크이븐" : "손절";
+              break;
             }
-            if (!tp1Hit && (bj.high || 0) >= tp1mech) { tp1Hit = true; }
-            if (tp1Hit && (bj.high || 0) >= tp2mech)  { exitPrice = tp2mech; exitType = "2???"; break; }
+            if (!tp1Hit && (bj.high || 0) >= tp1Price) { tp1Hit = true; }
+            if (tp1Hit && (bj.high || 0) >= tp2Price)  { exitPrice = tp2Price; exitType = "2차익절"; break; }
+          }
+          // TP1 달성했지만 TP2 미달성 후 기간 만료 → 1차익절로 확정
+          if (exitType === "기간만료" && tp1Hit) {
+            exitPrice = tp1Price;
+            exitType = "1차익절";
           }
           const pnlPct = (exitPrice - entryPrice) / entryPrice * 100;
-          const rrRatio = risk > 0 ? tp2mech / risk : 0;
-          mechTrades.push({ pnlPct, exitType, rrRatio });
+          mechTrades.push({ pnlPct, exitType });
         }
       }
     }
@@ -1058,6 +1064,7 @@ function _renderMechBt(mechTrades) {
   const n        = mechTrades.length;
   const wins     = mechTrades.filter(t => t.exitType === "2차익절" || t.exitType === "1차익절");
   const losses   = mechTrades.filter(t => t.exitType === "손절");
+  const breakevens = mechTrades.filter(t => t.exitType === "브레이크이븐");
   const timeouts = mechTrades.filter(t => t.exitType === "기간만료");
   const winRate   = wins.length / n;
   const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
@@ -1081,15 +1088,15 @@ function _renderMechBt(mechTrades) {
   }
   const pfStr = pf === Infinity ? "∞" : pf.toFixed(2);
   return `<div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
-    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시민 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 익절: ATR×2→ATR×3 | 최대 25봉</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시뮬 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 1차익절: ATR×2 | 2차익절: ATR×3 | 최대 25봉</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">신호 / 익절 / 손절 / 만료</div>
-        <div style="font-size:12px;font-weight:700">${n}건 | ${wins.length} / ${losses.length} / ${timeouts.length}</div>
+        <div style="font-size:10px;color:var(--text3)">신호 / 익절 / 손절${breakevens.length ? " / BE" : ""} / 만료</div>
+        <div style="font-size:12px;font-weight:700">${n}건 | ${wins.length} / ${losses.length}${breakevens.length ? " / "+breakevens.length : ""} / ${timeouts.length}</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">승률</div>
+        <div style="font-size:10px;color:var(--text3)">승률 (1차+2차익절)</div>
         <div style="font-size:14px;font-weight:800;color:${wrCol}">${(winRate*100).toFixed(0)}%</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
