@@ -169,19 +169,25 @@
           <div class="stop-loss-result">
             <!-- ── R:R 계산 기준 (기계적 스캔과 동일) ── -->
             <div class="sl-rr-basis-box">
-              <div class="sl-rr-basis-label">R:R 계산 기준 · EMA20−ATR 손절 / ATR×3 목표</div>
+              <div class="sl-rr-basis-label">기계적 매매 기준 (EMA20−ATR / ATR×2 / ATR×3)</div>
               <div class="sl-item sl-stop-primary">
-                <span class="sl-key sl-stop-key">🔴 손절선</span>
+                <span class="sl-key sl-stop-key">🔴 손절선 (EMA20−ATR)</span>
                 <span class="sl-val sl-stop-val" id="slEMA20ATR">—</span>
                 <span class="sl-pct" id="slEMA20ATRPct"></span>
               </div>
               <div class="sl-item sl-tp-item">
-                <span class="sl-key sl-tp-key">🟢 목표가</span>
+                <span class="sl-key sl-tp-key">🟡 1차 익절 (ATR×2)</span>
+                <span class="sl-val sl-tp-val" id="tpPrice1">—</span>
+                <span class="sl-pct" id="tpPct1"></span>
+              </div>
+              <div id="breakEvenNote" class="sl-breakeven"></div>
+              <div class="sl-item sl-tp-item">
+                <span class="sl-key sl-tp-key">🟢 2차 익절 (ATR×3)</span>
                 <span class="sl-val sl-tp-val" id="tpPrice3">—</span>
                 <span class="sl-pct" id="tpPct3"></span>
               </div>
               <div class="sl-item" id="rrRow">
-                <span class="sl-key">손익비 (R:R)</span>
+                <span class="sl-key">솔익비 (R:R)</span>
                 <span class="sl-val" id="rrValue" style="font-size:13px">—</span>
                 <span class="sl-sig" id="rrSignal"></span>
               </div>
@@ -215,30 +221,6 @@
                   <span id="sizingRiskNote"></span>
                 </div>
               </div>
-            </div>
-            <div class="sl-divider"></div>
-            <!-- ── 참고선 (포지션 관리 보조) ── -->
-            <div class="sl-ref-label">참고선</div>
-            <div class="sl-item sl-ts-item">
-              <span class="sl-key">Chandelier</span>
-              <span class="sl-val" id="slPrice">—</span>
-              <span class="sl-pct" id="slPct"></span>
-            </div>
-            <div class="sl-item">
-              <span class="sl-key">스윙 저점</span>
-              <span class="sl-val" id="slSwingLow">—</span>
-              <span class="sl-pct" id="slSwingLowPct"></span>
-            </div>
-            <div class="sl-item sl-tp-item">
-              <span class="sl-key sl-tp-key">1차 익절 (ATR×2)</span>
-              <span class="sl-val sl-tp-val" id="tpPrice1">—</span>
-              <span class="sl-pct" id="tpPct1"></span>
-            </div>
-            <div id="breakEvenNote" class="sl-breakeven"></div>
-            <div class="sl-item sl-tp-item">
-              <span class="sl-key sl-tp-key">2차 익절 (ATR×4/BB)</span>
-              <span class="sl-val sl-tp-val" id="tpPrice2">—</span>
-              <span class="sl-pct" id="tpPct2"></span>
             </div>
             <!-- 기존 JS 호환용 hidden -->
             <span id="slEMA20" style="display:none"></span>
