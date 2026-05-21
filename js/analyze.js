@@ -1149,12 +1149,16 @@ function runBacktest(fisBars) {
             if (!tp1Hit && (bj.high || 0) >= tp1Price) { tp1Hit = true; }
             if (tp1Hit && (bj.high || 0) >= tp2Price)  { exitPrice = tp2Price; exitType = "2차익절"; break; }
           }
-          // TP1 달성했지만 TP2 미달성 후 기간 만료 → 1차익절로 확정
+          // TP1 달성했지만 TP2 미달 후 기간 만료 → "1차익절" 분류
+          // (exitPrice = 25봉 종가 = 나머지 50% 실제 청산가, tp1Price로 덧어쓰지 않음)
           if (exitType === "기간만료" && tp1Hit) {
-            exitPrice = tp1Price;
             exitType = "1차익절";
           }
-          const pnlPct = (exitPrice - entryPrice) / entryPrice * 100;
+          // 50/50 부분 익절: TP1 도달 시 50% → tp1Price, 나머지 50% → exitPrice
+          const pnlPct = tp1Hit
+            ? 0.5 * (tp1Price - entryPrice) / entryPrice * 100
+              + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
+            : (exitPrice - entryPrice) / entryPrice * 100;
           mechTrades.push({ pnlPct, exitType });
         }
       }
@@ -1170,10 +1174,13 @@ function _renderMechBt(mechTrades) {
     return `<div class="bt-diag bt-neutral" style="margin-top:10px">⚡ 기계적 전략 (FIS≥60 + 진입점수≥65) 과거 신호 없음</div>`;
   }
   const n        = mechTrades.length;
-  const wins     = mechTrades.filter(t => t.exitType === "2차익절" || t.exitType === "1차익절");
-  const losses   = mechTrades.filter(t => t.exitType === "손절");
+  const wins2nd  = mechTrades.filter(t => t.exitType === "2차익절");
+  const wins1st  = mechTrades.filter(t => t.exitType === "1차익절");
   const breakevens = mechTrades.filter(t => t.exitType === "브레이크이븐");
+  const losses   = mechTrades.filter(t => t.exitType === "손절");
   const timeouts = mechTrades.filter(t => t.exitType === "기간만료");
+  // wins = TP1 도달 케이스 모두 (2차+1차+BE, 이제는 모두 부분 수익이므로 플러스)
+  const wins     = [...wins2nd, ...wins1st, ...breakevens];
   const winRate   = wins.length / n;
   const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
   const avgLoss   = losses.length ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length : 0;
@@ -1197,14 +1204,14 @@ function _renderMechBt(mechTrades) {
   const pfStr = pf === Infinity ? "∞" : pf.toFixed(2);
   return `<div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
     <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시뮬 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 1차익절: ATR×2 | 2차익절: ATR×3 | 최대 25봉</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 1차(ATR×2): 50%+손절↑진입가 | 2차(ATR×3): 잔여 50% | 25봉 기간제</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">신호 / 익절 / 손절${breakevens.length ? " / BE" : ""} / 만료</div>
-        <div style="font-size:12px;font-weight:700">${n}건 | ${wins.length} / ${losses.length}${breakevens.length ? " / "+breakevens.length : ""} / ${timeouts.length}</div>
+        <div style="font-size:10px;color:var(--text3)">신호 / 2차 / 1차 / BE / 손절 / 만료</div>
+        <div style="font-size:11px;font-weight:700">${n}건 | ${wins2nd.length} / ${wins1st.length} / ${breakevens.length} / ${losses.length} / ${timeouts.length}</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">승률 (1차+2차익절)</div>
+        <div style="font-size:10px;color:var(--text3)">승률 (TP1 도달 기준)</div>
         <div style="font-size:14px;font-weight:800;color:${wrCol}">${(winRate*100).toFixed(0)}%</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
