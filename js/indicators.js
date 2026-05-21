@@ -724,7 +724,7 @@ function calcEntryScore(enriched, context = {}) {
       "확인신호":   Math.round(trigger*10)/10,
       "저항여유":   Math.round(space*10)/10,
       "리스크관리": Math.round(riskCtrl*10)/10,
-      "주세신선도": Math.round(freshness*10)/10,
+      "추세신선도": Math.round(freshness*10)/10,
       "섹터·그룹":  Math.round(external*10)/10,
     },
     context: {
