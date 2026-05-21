@@ -262,7 +262,86 @@ function onAvgCostChange() {
   }
   const rrRowEl = document.getElementById("rrRow");
   if (rrRowEl) rrRowEl.classList.toggle("rr-warn", rr > 0 && rr < 2.0);
+
+  // 포지션 사이징 업데이트 (avgCost·ema20Stop 기반)
+  _updateSizing(avgCost, _ema20Stop);
 }
+// ── 포지션 사이징 ─────────────────────────────────────────────
+let _sizingRiskPct = 1;  // 기본 리스크 1%
+
+function _updateSizing(avgCost, ema20Stop) {
+  const box = document.getElementById("sizingBox");
+  if (!box) return;
+  const stopPct = (avgCost > 0 && ema20Stop > 0 && avgCost > ema20Stop)
+    ? Math.abs((ema20Stop - avgCost) / avgCost) : 0;
+  if (!avgCost || stopPct <= 0) { box.style.display = "none"; return; }
+  box.style.display = "block";
+
+  // 단위 라벨 갱신
+  const unitEl = document.getElementById("sizingUnitLabel");
+  if (unitEl) unitEl.textContent = _currentIsKRW ? "만원" : "$";
+  const inp = document.getElementById("totalAssetInput");
+  if (inp) inp.placeholder = _currentIsKRW ? "3000" : "30000";
+
+  _calcSizing(avgCost, stopPct);
+}
+
+function _calcSizing(avgCost, stopPct) {
+  const inp = document.getElementById("totalAssetInput");
+  const amtEl = document.getElementById("sizingAmount");
+  const qtyEl = document.getElementById("sizingQty");
+  const noteEl = document.getElementById("sizingRiskNote");
+  const raw = parseFloat(inp?.value) || 0;
+  if (!raw) {
+    if (amtEl) amtEl.textContent = "총자산 입력 시 표시";
+    if (qtyEl) qtyEl.textContent = "";
+    if (noteEl) noteEl.textContent = "";
+    return;
+  }
+  // KRW는 만원 단위 입력 → 원으로 환산
+  const totalAsset = _currentIsKRW ? raw * 10000 : raw;
+  const riskAmount = totalAsset * (_sizingRiskPct / 100);
+  const buyAmount  = riskAmount / stopPct;
+  const qty        = avgCost > 0 ? Math.floor(buyAmount / avgCost) : 0;
+  const dec        = _currentIsKRW ? 0 : 2;
+
+  if (amtEl) {
+    if (_currentIsKRW) {
+      const buyMal = Math.round(buyAmount / 10000);
+      const col = buyMal > raw ? "var(--bear,#e53935)" : "var(--bull,#2ea043)";
+      amtEl.textContent = buyMal.toLocaleString() + " 만원";
+      amtEl.style.color = col;
+      if (buyMal > raw) amtEl.textContent += "  ※총자산 초과";
+    } else {
+      amtEl.textContent = "$" + Math.round(buyAmount).toLocaleString();
+      amtEl.style.color = buyAmount > totalAsset ? "var(--bear,#e53935)" : "var(--bull,#2ea043)";
+    }
+  }
+  if (qtyEl) qtyEl.textContent = qty > 0 ? `≈ ${qty.toLocaleString()}주` : "";
+  if (noteEl) {
+    const riskStr = _currentIsKRW
+      ? `리스크 ${_sizingRiskPct}% = 손절 시 최대 ${Math.round(riskAmount/10000).toLocaleString()}만원 손실 (손절 ${(stopPct*100).toFixed(1)}%)`
+      : `Risk ${_sizingRiskPct}% = max $${Math.round(riskAmount).toLocaleString()} loss (stop ${(stopPct*100).toFixed(1)}%)`;
+    noteEl.textContent = riskStr;
+  }
+}
+
+function onSizingChange() {
+  const inp = document.getElementById("avgCostInput");
+  const avgCost = parseFloat(inp?.value) || 0;
+  const ema20Stop = (_currentEMA20 > 0 && _currentATR > 0) ? _currentEMA20 - _currentATR : 0;
+  const stopPct = avgCost > 0 && ema20Stop > 0 && avgCost > ema20Stop
+    ? Math.abs((ema20Stop - avgCost) / avgCost) : 0;
+  _calcSizing(avgCost, stopPct);
+}
+
+function onRiskBtn(btn) {
+  document.querySelectorAll(".sl-risk-btn").forEach(b => b.classList.remove("sl-risk-active"));
+  btn.classList.add("sl-risk-active");
+  _sizingRiskPct = parseFloat(btn.dataset.risk);
+  onSizingChange();
+}
+
 // ── 기계적 진입 체크리스트 업데이트 ───────────────────────────
 function renderChecklist() {
   function _upd(iconId, valId, pass, val) {

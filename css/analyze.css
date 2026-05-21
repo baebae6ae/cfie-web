@@ -1039,6 +1039,110 @@
   color: var(--text3);
   margin: 4px 0 3px;
 }
+/* ── 포지션 사이징 박스 ── */
+.sl-sizing-box {
+  background: var(--neutral-50, rgba(0,0,0,0.03));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+.sl-sizing-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.sl-sizing-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text1);
+}
+.sl-sizing-hint {
+  font-size: 10px;
+  color: var(--text3);
+}
+.sl-sizing-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  flex-wrap: wrap;
+}
+.sl-sizing-asset-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 110px;
+}
+.sl-sizing-unit-label {
+  font-size: 11px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.sl-sizing-input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg2, #fff);
+  color: var(--text1);
+  min-width: 0;
+}
+.sl-risk-btns {
+  display: flex;
+  gap: 3px;
+}
+.sl-risk-btn {
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sl-risk-btn:hover { background: var(--border2); }
+.sl-risk-active {
+  background: var(--accent, #1976d2) !important;
+  color: #fff !important;
+  border-color: var(--accent, #1976d2) !important;
+}
+.sl-sizing-result {
+  border-top: 1px solid var(--border2);
+  padding-top: 6px;
+}
+.sl-sizing-main-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.sl-sizing-result-label {
+  font-size: 10px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+.sl-sizing-amount {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--bull, #2ea043);
+}
+.sl-sizing-sub-row {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.sl-sizing-qty {
+  font-weight: 700;
+  color: var(--text2);
+}
 .sl-tp-key  { color: var(--bull, #2ea043) !important; }
 .sl-tp-val  { color: var(--bull, #2ea043) !important; }
 .sl-tp-item .sl-val { color: var(--bull, #2ea043); }﻿

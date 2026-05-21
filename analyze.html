@@ -186,6 +186,36 @@
                 <span class="sl-sig" id="rrSignal"></span>
               </div>
             </div>
+            <!-- ── 포지션 사이징 (R:R 통과 후 매수금액 계산) ── -->
+            <div class="sl-sizing-box" id="sizingBox" style="display:none">
+              <div class="sl-sizing-header">
+                <span class="sl-sizing-title">📐 포지션 사이징</span>
+                <span class="sl-sizing-hint">총자산 = 예수금 + 보유주식 평가금액</span>
+              </div>
+              <div class="sl-sizing-inputs">
+                <div class="sl-sizing-asset-wrap">
+                  <span class="sl-sizing-unit-label" id="sizingUnitLabel">만원</span>
+                  <input type="number" id="totalAssetInput" class="sl-sizing-input"
+                         placeholder="3000" min="1" oninput="onSizingChange()">
+                </div>
+                <div class="sl-risk-btns" id="riskBtns">
+                  <button class="sl-risk-btn" data-risk="0.5" onclick="onRiskBtn(this)">0.5%</button>
+                  <button class="sl-risk-btn sl-risk-active" data-risk="1" onclick="onRiskBtn(this)">1%</button>
+                  <button class="sl-risk-btn" data-risk="1.5" onclick="onRiskBtn(this)">1.5%</button>
+                  <button class="sl-risk-btn" data-risk="2" onclick="onRiskBtn(this)">2%</button>
+                </div>
+              </div>
+              <div class="sl-sizing-result">
+                <div class="sl-sizing-main-row">
+                  <span class="sl-sizing-result-label">권장 매수금액</span>
+                  <span class="sl-sizing-amount" id="sizingAmount">총자산 입력 시 표시</span>
+                </div>
+                <div class="sl-sizing-sub-row">
+                  <span id="sizingQty"></span>
+                  <span id="sizingRiskNote"></span>
+                </div>
+              </div>
+            </div>
             <div class="sl-divider"></div>
             <!-- ── 참고선 (포지션 관리 보조) ── -->
             <div class="sl-ref-label">참고선</div>
