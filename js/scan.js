@@ -317,9 +317,9 @@ function _analyzeFis(ticker, name, bars) {
     summary_l1:   judgment.summary_l1    || "",
     ichimoku:     judgment.ichimoku_status || "—",
     btDiag:       btSim?.diag ?? "",
-    btAvgR:       btSim?.avgR ?? null,
-    btWinRate:    btSim?.winRate ?? null,
-    btTotal:      btSim?.total ?? 0,
+    btPF:         btSim?.mech?.pf ?? null,
+    btWinRate:    btSim?.mech?.winRate ?? null,
+    btTotal:      btSim?.mech?.total ?? 0,
   };
 }
 
@@ -525,13 +525,8 @@ function renderFisCard(c, idx) {
     : btDiag === "bt-warn"
     ? 'style="border-left:3px solid #d29922;box-shadow:inset 3px 0 0 rgba(210,153,34,0.12);position:relative"'
     : "";
-  const btBadge = btDiag === "bt-ok"
-    ? `<div class="bt-ok-badge" style="position:absolute;top:8px;right:8px;background:rgba(46,160,67,0.15);color:#2ea043;border:1px solid rgba(46,160,67,0.4);font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700">✓ 백테스트 유효</div>`
-    : "";
-
   return `
   <div class="candidate-card" ${cardStyle}>
-  ${btBadge}
     <div class="cc-top">
       <div>
         <div class="cc-name">${c.name}</div>
@@ -550,6 +545,7 @@ function renderFisCard(c, idx) {
       <span class="cs-chip" style="background:rgba(21,101,192,0.12);color:#90caf9" title="R:R">R:R ${(c.rr??0).toFixed(1)}</span>
       <span class="cs-chip" title="일목균형표">${(c.ichimoku||"—").split("—")[0].trim()}</span>
     </div>
+    ${btDiag === "bt-ok" ? '<div class="bt-ok-badge">✓ 백테스트 유효</div>' : ""}
     <div class="cc-actions">
       <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">📈 차트 분석</button>
       <button class="cc-btn cc-btn-bt" id="bt-btn-${idx}" onclick="_showScanBt('${c.ticker}',${idx})">📊 백테스트</button>
@@ -688,61 +684,127 @@ function renderKumoCard(c) {
     </div>
   </div>`;
 }
-// ── 미니 백테스트 (스캔 카드 버튼 클릭 시 지연 계산) ──────────────
-// ── 백테스트 시뮬레이션 공통 헬퍼 ─────────────────────────────────────
-// _analyzeFis 스캔 시 + 백테스트 동시 실행, 결과는 카드에 즉시 반영
+// \u2500\u2500 \ubc31\ud14c\uc2a4\ud2b8 \uc2dc\ubbac \ucf54\uc5b4 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// _analyzeFis \uc2a4\uce94 \uc2dc + \ubc31\ud14c\uc2a4\ud2b8 \ub3d9\uc2dc \uc2e4\ud589, \uacb0\uacfc\ub294 \uce74\ub4dc\uc5d0 \uc989\uc2dc \ubc18\uc601
 function _runBtSim(fisBars) {
   if (!fisBars || typeof calcEntryScore !== "function") return null;
   const n = fisBars.length;
   if (n < 100) return null;
   const MIN_LB = 80;
-  const trades = [];
+
+  // \u2500\u2500 1. FIS \uc9c4\uc785\uc810\uc218 \ubc84\ud134 \ubd84\uc11d (\ubd84\uc11d\ud398\uc774\uc9c0 runBacktest \ub3d9\uc77c \ub85c\uc9c1) \u2500\u2500
+  const fisKeys = ["90+", "80-90", "65-80", "50-65"];
+  const buckets = {};
+  for (const k of fisKeys) buckets[k] = { counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
+
+  // \u2500\u2500 2. \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac (50/50 \ubd80\ubd84 \uc775\uc808 \ubaa8\ub378) \u2500\u2500
+  const mechTrades = [];
   let skipUntil = 0;
-  for (let i = MIN_LB; i < n - 26; i++) {
-    if (i < skipUntil) continue;
-    const row = fisBars[i];
-    if ((row.FIS ?? 0) < 60) continue;
-    const entryData = calcEntryScore(fisBars.slice(0, i + 1));
-    if (!entryData || (entryData.score ?? 0) < 65) continue;
-    const close = row.close ?? row.Close ?? 0;
-    const atr   = row.ATR14 ?? 0;
-    if (!close || !atr) continue;
-    const ema20bt = row.EMA20 ?? close;
-    const btRisk  = close - (ema20bt - atr);
-    if (btRisk <= 0 || (atr * 3) / btRisk < 1.5) continue;
-    const stopLoss = ema20bt - atr;
-    const tp2      = close + atr * 3;
-    let result = "timeout";
-    for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
-      const bar = fisBars[j];
-      const high = bar.high ?? bar.High ?? bar.close;
-      const low  = bar.low  ?? bar.Low  ?? bar.close;
-      if (low <= stopLoss) { result = "stop"; break; }
-      if (high >= tp2)     { result = "tp2";  break; }
-      if (j === Math.min(i + 25, n - 1)) result = "timeout";
+
+  for (let i = MIN_LB; i < n - 5; i++) {
+    const slice     = fisBars.slice(0, i + 1);
+    const entryData = calcEntryScore(slice);
+    const score     = entryData?.score ?? 0;
+    if (score < 0) continue;
+
+    const curClose = fisBars[i].close ?? fisBars[i].Close ?? 0;
+    if (curClose > 0) {
+      const key = score >= 90 ? "90+" : score >= 80 ? "80-90" : score >= 65 ? "65-80" : score >= 50 ? "50-65" : null;
+      if (key) {
+        for (const p of [1, 3, 5]) {
+          if (i + p >= n) continue;
+          const fwdClose = fisBars[i + p]?.close ?? fisBars[i + p]?.Close ?? 0;
+          if (fwdClose) { buckets[key].counts[p]++; if (fwdClose > curClose) buckets[key].wins[p]++; }
+        }
+        const endIdx = Math.min(i + 5, n - 1);
+        let hadMFE = false;
+        for (let j = i + 1; j <= endIdx; j++) {
+          if ((fisBars[j]?.high ?? fisBars[j]?.High ?? 0) > curClose * 1.02) { hadMFE = true; break; }
+        }
+        buckets[key].counts.mfe++;
+        if (hadMFE) buckets[key].wins.mfe++;
+      }
     }
-    trades.push({ result });
-    skipUntil = i + 5;
+
+    // \uae30\uacc4\uc801 \uc804\ub7b5: FIS\u226560 AND \uc9c4\uc785\uc810\uc218\u226565 AND R:R\u22651.5
+    if (i >= skipUntil && score >= 65 && (fisBars[i].FIS ?? 0) >= 60 && i + 1 < n && i <= n - 26) {
+      const atr   = fisBars[i].ATR14 ?? 0;
+      const ema20 = fisBars[i].EMA20 ?? 0;
+      if (atr > 0 && ema20 > 0) {
+        const stopPrice  = ema20 - atr;
+        const nextBar    = fisBars[i + 1];
+        const entryPrice = nextBar ? (nextBar.open ?? nextBar.close ?? 0) : 0;
+        const rr_risk    = entryPrice - stopPrice;
+        if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice && (atr * 3) / rr_risk >= 1.5) {
+          const tp1Price = entryPrice + atr * 2;   // 1\ucc28 \uc775\uc808: ATR\u00d72 (50% \uccad\uc0b0)
+          const tp2Price = entryPrice + atr * 3;   // 2\ucc28 \uc775\uc808: ATR\u00d73 (\uc794\uc5ec 50%)
+          let exitPrice  = fisBars[Math.min(i + 25, n - 1)]?.close ?? entryPrice;
+          let exitType   = "\uae30\uac04\ub9cc\ub8cc";
+          let tp1Hit     = false;
+          for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
+            const bj       = fisBars[j];
+            if (!bj) continue;
+            const stopLine = tp1Hit ? entryPrice : stopPrice;
+            if ((bj.low ?? bj.Low ?? Infinity) <= stopLine) {
+              exitPrice = stopLine; exitType = tp1Hit ? "\ube0c\ub808\uc774\ud06c\uc774\ube10" : "\uc190\uc808"; break;
+            }
+            if (!tp1Hit && (bj.high ?? bj.High ?? 0) >= tp1Price) { tp1Hit = true; }
+            if (tp1Hit  && (bj.high ?? bj.High ?? 0) >= tp2Price) { exitPrice = tp2Price; exitType = "2\ucc28\uc775\uc808"; break; }
+          }
+          if (exitType === "\uae30\uac04\ub9cc\ub8cc" && tp1Hit) exitType = "1\ucc28\uc775\uc808";
+          const pnlPct = tp1Hit
+            ? 0.5 * (tp1Price - entryPrice) / entryPrice * 100
+              + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
+            : (exitPrice - entryPrice) / entryPrice * 100;
+          mechTrades.push({ pnlPct, exitType });
+          skipUntil = i + 5;
+        }
+      }
+    }
   }
-  if (trades.length === 0) return null;
-  const total    = trades.length;
-  const nTp2     = trades.filter(t => t.result === "tp2").length;
-  const nStop    = trades.filter(t => t.result === "stop").length;
-  const nTimeout = trades.filter(t => t.result === "timeout").length;
-  const avgR     = (nTp2 * 3.0 + nStop * (-1.0)) / total;
-  const winRate  = nTp2 / total * 100;
-  const diag     = avgR >= 0.5 ? "bt-ok" : avgR >= 0 ? "bt-warn" : "bt-bad";
-  return { total, nTp2, nStop, nTimeout, avgR, winRate, diag };
+
+  // \u2500\u2500 \uae30\uacc4\uc801 \uc804\ub7b5 \ud1b5\uacc4 \u2500\u2500
+  const mt       = mechTrades;
+  const mTotal   = mt.length;
+  const wins2nd  = mt.filter(t => t.exitType === "2\ucc28\uc775\uc808");
+  const wins1st  = mt.filter(t => t.exitType === "1\ucc28\uc775\uc808");
+  const bes      = mt.filter(t => t.exitType === "\ube0c\ub808\uc774\ud06c\uc774\ube10");
+  const losses   = mt.filter(t => t.exitType === "\uc190\uc808");
+  const timeouts = mt.filter(t => t.exitType === "\uae30\uac04\ub9cc\ub8cc");
+  const mWins    = [...wins2nd, ...wins1st, ...bes];
+  const mWinRate = mTotal > 0 ? mWins.length / mTotal : 0;
+  const totalProfit = mWins.reduce((s, t) => s + t.pnlPct, 0);
+  const totalLoss   = Math.abs(losses.reduce((s, t) => s + t.pnlPct, 0));
+  const pf          = totalLoss > 0 ? totalProfit / totalLoss : (totalProfit > 0 ? Infinity : 0);
+  const expectancy  = mTotal > 0 ? mt.reduce((s, t) => s + t.pnlPct, 0) / mTotal : 0;
+  const avgWin      = mWins.length   ? mWins.reduce((s,t)=>s+t.pnlPct,0)/mWins.length   : 0;
+  const avgLoss     = losses.length  ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length  : 0;
+
+  let mechDiag;
+  if (mTotal < 5)                           mechDiag = "bt-neutral";
+  else if (pf >= 1.5 && mWinRate >= 0.45)  mechDiag = "bt-ok";
+  else if (pf >= 1.0 && expectancy > 0)    mechDiag = "bt-neutral";
+  else                                      mechDiag = "bt-warn";
+
+  const diag = mechDiag === "bt-ok" ? "bt-ok" : mechDiag === "bt-warn" ? "bt-bad" : "bt-warn";
+
+  return {
+    buckets,
+    mech: { total: mTotal, wins2nd: wins2nd.length, wins1st: wins1st.length,
+            bes: bes.length, losses: losses.length, timeouts: timeouts.length,
+            winRate: mWinRate, pf, expectancy, avgWin, avgLoss, diag: mechDiag },
+    diag,
+  };
 }
 
-﻿﻿function _showScanBt(ticker, idx) {
+function _showScanBt(ticker, idx) {
   const panel = document.getElementById("bt-panel-" + idx);
   const btn   = document.getElementById("bt-btn-" + idx);
   if (!panel || !btn) return;
 
   if (panel.style.display !== "none") {
     panel.style.display = "none";
-    btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8";
+    btn.textContent = "\uD83D\uDCCA \ubc31\ud14c\uc2a4\ud2b8";
     return;
   }
 
@@ -760,57 +822,109 @@ function _runBtSim(fisBars) {
 
     const sim = _runBtSim(fisBars);
     if (!sim) {
-      panel.innerHTML = "<div class='scan-bt-empty'>신호 없음 (데이터 부족)</div>";
-      btn.textContent = "📊 백테스트"; btn.disabled = false; return;
+      panel.innerHTML = "<div class='scan-bt-empty'>\uc2e0\ud638 \uc5c6\uc74c (\ub370\uc774\ud130 \ubd80\uc871)</div>";
+      btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
-    const { total, nTp2, nStop, nTimeout, avgR, winRate, diag } = sim;
 
+    const { buckets, mech, diag } = sim;
 
-    const pc   = (cnt) => total ? (cnt / total * 100).toFixed(0) + "%" : "—";
-    const rCol = avgR >= 0.5 ? "#2ea043" : avgR >= 0 ? "#d29922" : "#e53935";
-    const wCol = winRate >= 40 ? "#2ea043" : winRate >= 30 ? "#d29922" : "#e53935";
-    const diagTxt = avgR >= 0.5
-      ? "✓ 전략 유효 — 진입 근거 있음"
-      : avgR >= 0 ? "⚠ 경계선, 주의 필요"
-      : "⛔ 이 종목은 전략 비효";
+    // \u2500\u2500 \uc139\uc158 1: \uc9c4\uc785\uc810\uc218 \ubc31\ud14c\uc2a4\ud2b8 (\uad6c\uac04\ubcc4 \uc2b9\ub960 \ubc0f MFE) \u2500\u2500
+    const fisKeys  = ["90+", "80-90", "65-80", "50-65"];
+    const fisColors = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922"};
+    const pctSpan = (wins, total) => {
+      if (!total) return `<span style="color:#888">\u2014</span>`;
+      const v = wins / total * 100;
+      const col = v >= 55 ? "#2ea043" : v >= 45 ? "#d29922" : "#e53935";
+      return `<span style="color:${col};font-weight:800">${v.toFixed(0)}%</span>`;
+    };
 
-    let h = `<div class="scan-bt-note">기계적 전략 시민 · ${total}건 신호 · 손절=EMA20−ATR · 목표=ATR×3 · 25봉 보유 (TP1후 BE트레일 없음)</div>`;
-    h += `<div class="scan-bt-hd"><span>결과</span><span>건수</span><span>비율</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#2ea043;font-weight:700">3R 익절 (TP2)</span><span>${nTp2}</span><span>${pc(nTp2)}</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#e53935">실손절</span><span>${nStop}</span><span>${pc(nStop)}</span></div>`;
-    h += `<div class="scan-bt-row"><span style="color:#888">25봉 첩산</span><span>${nTimeout}</span><span>${pc(nTimeout)}</span></div>`;
-    h += `<div class="scan-bt-diag ${diag}">승률 <b style="color:${wCol}">${winRate.toFixed(0)}%</b> &nbsp;·&nbsp; 평균 R <b style="color:${rCol}">${avgR >= 0 ? "+" : ""}${avgR.toFixed(2)}R</b> &nbsp;—&nbsp; ${diagTxt}</div>`;
+    let h = `<div class="scan-bt-note" style="border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">\uD83D\uDCC8 \uc9c4\uc785\uc810\uc218 \ubc31\ud14c\uc2a4\ud2b8 \u2014 \uad6c\uac04\ubcc4 +5\ubd09 \uc2b9\ub960 \ubc0f MFE(+2%)</div>`;
+    h += `<div class="scan-bt-hd"><span>\uad6c\uac04</span><span>N</span><span>+1\ubd09</span><span>+5\ubd09</span><span>MFE</span></div>`;
+    for (const k of fisKeys) {
+      const b = buckets[k];
+      if (!b.counts[1]) {
+        h += `<div class="scan-bt-row"><span style="color:${fisColors[k]};font-weight:700">${k}</span><span style="color:#888">0</span><span style="color:#888">\u2014</span><span style="color:#888">\u2014</span><span style="color:#888">\u2014</span></div>`;
+        continue;
+      }
+      const mfeV = b.counts.mfe ? b.wins.mfe / b.counts.mfe * 100 : 0;
+      const mfeC = mfeV >= 65 ? "#2ea043" : mfeV >= 50 ? "#d29922" : "#e53935";
+      h += `<div class="scan-bt-row">
+        <span style="color:${fisColors[k]};font-weight:700">${k}</span>
+        <span>${b.counts[1]}</span>
+        ${pctSpan(b.wins[1], b.counts[1])}
+        ${pctSpan(b.wins[5], b.counts[5])}
+        <span style="color:${mfeC};font-weight:800">${mfeV.toFixed(0)}%</span>
+      </div>`;
+    }
+
+    // \u2500\u2500 \uc139\uc158 2: \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac \u2500\u2500
+    const { total: mN, wins2nd, wins1st, bes, losses, timeouts,
+            winRate, pf, expectancy, avgWin, avgLoss, diag: mechDiag } = mech;
+    const pfStr = pf === Infinity ? "\u221e" : pf.toFixed(2);
+    const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
+    const wrCol = winRate >= 0.50 ? "#2ea043" : winRate >= 0.40 ? "#d29922" : "#e53935";
+    const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
+
+    let verdict, verdictClass;
+    if (mN < 5) {
+      verdict = `\u26a0 \uc2e0\ud638 ${mN}\uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4 \uc2e0\ub8b0 \ub099\uc74c`; verdictClass = "bt-neutral";
+    } else if (mechDiag === "bt-ok") {
+      verdict = `\u2713 \uc190\uc775\ube44\u00b7\uc2b9\ub960 \uc591\ud638 \u2014 \uae30\uacc4\uc801 \uc804\ub7b5 \uc801\uc6a9 \uac00\ub2a5`; verdictClass = "bt-ok";
+    } else if (mechDiag === "bt-neutral") {
+      verdict = `\u25b3 \uae30\ub300\uac12 \ud50c\ub7ec\uc2a4, \uc190\uc775\ube44 \uc57d\ud568 \u2014 \ud3ec\uc9c0\uc158 \uaddc\ubaa8 \uc870\uc808 \ud544\uc694`; verdictClass = "bt-neutral";
+    } else {
+      verdict = `\u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9 \uae30\uacc4\uc801 \uc804\ub7b5 \ubd80\uc801\ud569`; verdictClass = "bt-warn";
+    }
+
+    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac (FIS\u226560 \u00b7 \uc9c4\uc785\uc810\uc218\u226565 \u00b7 R:R\u22651.5)</div>`;
+    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">\uc194\uc808=EMA20\u2212ATR \u00b7 1\ucc28(ATR\u00d72) 50%+\uc194\uc808\u2191\uc9c4\uc785\uac00 \u00b7 2\ucc28(ATR\u00d73) \uc794\uc5ec50% \u00b7 25\ubd09 \uae30\uac04\uc81c</div>`;
+    if (mN === 0) {
+      h += `<div class="scan-bt-empty">\uacfc\uac70 \uc2e0\ud638 \uc5c6\uc74c</div>`;
+    } else {
+      const pc = cnt => mN ? (cnt / mN * 100).toFixed(0) + "%" : "\u2014";
+      h += `<div class="scan-bt-hd"><span>\uacb0\uacfc</span><span>\uac74\uc218</span><span>\ube44\uc728</span></div>`;
+      h += `<div class="scan-bt-row"><span style="color:#2ea043;font-weight:700">2\ucc28\uc775\uc808 (ATR\u00d73)</span><span>${wins2nd}</span><span>${pc(wins2nd)}</span></div>`;
+      h += `<div class="scan-bt-row"><span style="color:#56d364">1\ucc28\uc775\uc808 (ATR\u00d72)</span><span>${wins1st}</span><span>${pc(wins1st)}</span></div>`;
+      h += `<div class="scan-bt-row"><span style="color:#d29922">\ube0c\ub808\uc774\ud06c\uc774\ube10</span><span>${bes}</span><span>${pc(bes)}</span></div>`;
+      h += `<div class="scan-bt-row"><span style="color:#e53935">\uc190\uc808</span><span>${losses}</span><span>${pc(losses)}</span></div>`;
+      h += `<div class="scan-bt-row"><span style="color:#888">\uae30\uac04\ub9cc\ub8cc</span><span>${timeouts}</span><span>${pc(timeouts)}</span></div>`;
+      h += `<div class="scan-bt-diag ${verdictClass}" style="margin-top:6px">
+        \uc2b9\ub960 <b style="color:${wrCol}">${(winRate*100).toFixed(0)}%</b>
+        &nbsp;\u00b7&nbsp; \uc190\uc775\ube44(PF) <b style="color:${pfCol}">${pfStr}</b>
+        &nbsp;\u00b7&nbsp; \uae30\ub300\uac12 <b style="color:${exCol}">${expectancy.toFixed(1)}%</b>
+        <br><span style="font-size:10px">${verdict}</span>
+      </div>`;
+      h += `<div style="font-size:10px;color:#888;margin-top:4px">\uc218\uc775 +${avgWin.toFixed(1)}% / \uc190\uc2e4 ${avgLoss.toFixed(1)}% \u00b7 \uac70\ub798\ube44\uc6a9\u00b7\uc2ac\ub9ac\ud53c\uc9c0 \ubbf8\ud3ec\ud568</div>`;
+    }
 
     panel.innerHTML = h;
-    btn.textContent = "\uD83D\uDCCA \uC811\uAE30"; btn.disabled = false;
+    btn.textContent = "\uD83D\uDCCA \uc811\uae30"; btn.disabled = false;
 
-    // 백테스트 결과가 bt-ok이면 카드 강조 (평균R>=0.5 + 승률>=40%)
-    const card = panel.closest('.candidate-card');
+    // \ucee4\ub4dc \uac15\uc870 \ubc0f \ubc30\uc9c0 \uc704\uce58 \uc218\uc815 (\uc778\ub77c\uc778 \uc0bd\uc785)
+    const card = panel.closest(".candidate-card");
     if (card) {
-      card.style.position = 'relative';
-      if (diag === 'bt-ok') {
-        card.style.borderLeft = '3px solid #2ea043';
-        card.style.boxShadow  = 'inset 3px 0 0 rgba(46,160,67,0.15)';
-        card.style.background = '';
-        if (!card.querySelector('.bt-ok-badge')) {
-          const badge = document.createElement('div');
-          badge.className = 'bt-ok-badge';
-          badge.textContent = '✓ 백테스트 유효';
-          badge.style.cssText = 'position:absolute;top:8px;right:8px;background:rgba(46,160,67,0.15);color:#2ea043;border:1px solid rgba(46,160,67,0.4);font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700';
-          card.appendChild(badge);
+      if (diag === "bt-ok") {
+        card.style.borderLeft = "3px solid #2ea043";
+        card.style.boxShadow  = "inset 3px 0 0 rgba(46,160,67,0.15)";
+        if (!card.querySelector(".bt-ok-badge")) {
+          const badge = document.createElement("div");
+          badge.className = "bt-ok-badge";
+          badge.textContent = "\u2713 \ubc31\ud14c\uc2a4\ud2b8 \uc720\ud6a8";
+          const actionsEl = card.querySelector(".cc-actions");
+          if (actionsEl) card.insertBefore(badge, actionsEl);
+          else card.appendChild(badge);
         }
-      } else if (diag === 'bt-bad') {
-        card.style.borderLeft = '3px solid #e53935';
-        card.style.boxShadow  = 'inset 3px 0 0 rgba(229,57,53,0.12)';
-        card.style.background = '';
+      } else if (diag === "bt-bad") {
+        card.style.borderLeft = "3px solid #e53935";
+        card.style.boxShadow  = "inset 3px 0 0 rgba(229,57,53,0.12)";
       } else {
-        card.style.borderLeft = '3px solid #d29922';
-        card.style.boxShadow  = 'inset 3px 0 0 rgba(210,153,34,0.12)';
-        card.style.background = '';
+        card.style.borderLeft = "3px solid #d29922";
+        card.style.boxShadow  = "inset 3px 0 0 rgba(210,153,34,0.12)";
       }
     }
   }, 20);
 }
+
 
 function _restoreScanCache() {
   const rs       = document.getElementById("resultsSection");
