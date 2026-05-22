@@ -1137,6 +1137,7 @@ function runBacktest(fisBars) {
           let exitPrice = (fisBars[Math.min(i + 25, n - 1)]?.close || entryPrice);
           let exitType = "기간만료";
           let tp1Hit = false;
+          let tp1Bar = null;
           for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
             const bj = fisBars[j];
             if (!bj) continue;
@@ -1146,7 +1147,7 @@ function runBacktest(fisBars) {
               exitType = tp1Hit ? "브레이크이븐" : "손절";
               break;
             }
-            if (!tp1Hit && (bj.high || 0) >= tp1Price) { tp1Hit = true; }
+            if (!tp1Hit && (bj.high || 0) >= tp1Price) { tp1Hit = true; tp1Bar = j - i; }
             if (tp1Hit && (bj.high || 0) >= tp2Price)  { exitPrice = tp2Price; exitType = "2차익절"; break; }
           }
           // TP1 달성했지만 TP2 미달 후 기간 만료 → "1차익절" 분류
@@ -1159,7 +1160,7 @@ function runBacktest(fisBars) {
             ? 0.5 * (tp1Price - entryPrice) / entryPrice * 100
               + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
             : (exitPrice - entryPrice) / entryPrice * 100;
-          mechTrades.push({ pnlPct, exitType });
+          mechTrades.push({ pnlPct, exitType, tp1Bar });
         }
       }
     }
@@ -1188,6 +1189,16 @@ function _renderMechBt(mechTrades) {
   const totalLoss   = Math.abs(losses.reduce((s,t)=>s+t.pnlPct,0));
   const pf          = totalLoss > 0 ? totalProfit/totalLoss : (totalProfit>0 ? Infinity : 0);
   const expectancy  = mechTrades.reduce((s,t)=>s+t.pnlPct,0)/n;
+  const tp1Reached  = mechTrades.filter(t => t.tp1Bar !== null);
+  const tp1Bars     = tp1Reached.map(t => t.tp1Bar).sort((a, b) => a - b);
+  const avgTp1Bar   = tp1Reached.length
+    ? tp1Reached.reduce((s, t) => s + t.tp1Bar, 0) / tp1Reached.length
+    : null;
+  const medTp1Bar   = tp1Reached.length
+    ? (tp1Bars.length % 2 === 0
+      ? (tp1Bars[tp1Bars.length / 2 - 1] + tp1Bars[tp1Bars.length / 2]) / 2
+      : tp1Bars[Math.floor(tp1Bars.length / 2)])
+    : null;
   const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
   const wrCol = winRate >= 0.50 ? "#2ea043" : winRate >= 0.40 ? "#d29922" : "#e53935";
   const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
@@ -1224,6 +1235,9 @@ function _renderMechBt(mechTrades) {
       </div>
     </div>
     <div class="bt-diag ${verdictClass}">${verdict}</div>
+    ${avgTp1Bar !== null
+      ? `<div style="font-size:11px;color:var(--text2);margin-top:5px">1차 익절 평균 도달: <b style="color:#56a0d3">${avgTp1Bar.toFixed(1)}봉</b> · 중위수: <b style="color:#56a0d3">${medTp1Bar.toFixed(1)}봉</b> <span style="color:var(--text3)">(TP1 도달 ${tp1Reached.length}건 기준)</span></div>`
+      : ""}
     <div style="font-size:10px;color:var(--text3);margin-top:4px">※ 거래비용·슬리피지 미포함. 과거 성과가 미래를 보장하지 않음</div>
   </div>`;
 }
