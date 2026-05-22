@@ -733,6 +733,7 @@ function _runBtSim(fisBars) {
           let exitPrice  = fisBars[Math.min(i + 25, n - 1)]?.close ?? entryPrice;
           let exitType   = "\uae30\uac04\ub9cc\ub8cc";
           let tp1Hit     = false;
+          let tp1Bar     = null;
           for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
             const bj       = fisBars[j];
             if (!bj) continue;
@@ -740,7 +741,7 @@ function _runBtSim(fisBars) {
             if ((bj.low ?? bj.Low ?? Infinity) <= stopLine) {
               exitPrice = stopLine; exitType = tp1Hit ? "\ube0c\ub808\uc774\ud06c\uc774\ube10" : "\uc190\uc808"; break;
             }
-            if (!tp1Hit && (bj.high ?? bj.High ?? 0) >= tp1Price) { tp1Hit = true; }
+            if (!tp1Hit && (bj.high ?? bj.High ?? 0) >= tp1Price) { tp1Hit = true; tp1Bar = j - i; }
             if (tp1Hit  && (bj.high ?? bj.High ?? 0) >= tp2Price) { exitPrice = tp2Price; exitType = "2\ucc28\uc775\uc808"; break; }
           }
           if (exitType === "\uae30\uac04\ub9cc\ub8cc" && tp1Hit) exitType = "1\ucc28\uc775\uc808";
@@ -748,7 +749,7 @@ function _runBtSim(fisBars) {
             ? 0.5 * (tp1Price - entryPrice) / entryPrice * 100
               + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
             : (exitPrice - entryPrice) / entryPrice * 100;
-          mechTrades.push({ pnlPct, exitType });
+          mechTrades.push({ pnlPct, exitType, tp1Bar });
         }
       }
     }
@@ -770,6 +771,16 @@ function _runBtSim(fisBars) {
   const expectancy  = mTotal > 0 ? mt.reduce((s, t) => s + t.pnlPct, 0) / mTotal : 0;
   const avgWin      = mWins.length   ? mWins.reduce((s,t)=>s+t.pnlPct,0)/mWins.length   : 0;
   const avgLoss     = losses.length  ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length  : 0;
+  const tp1Reached    = mt.filter(t => t.tp1Bar !== null);
+  const tp1BarsSorted = tp1Reached.map(t => t.tp1Bar).sort((a, b) => a - b);
+  const avgTp1Bar     = tp1Reached.length
+    ? tp1Reached.reduce((s, t) => s + t.tp1Bar, 0) / tp1Reached.length
+    : null;
+  const medTp1Bar     = tp1Reached.length
+    ? (tp1BarsSorted.length % 2 === 0
+        ? (tp1BarsSorted[tp1BarsSorted.length/2 - 1] + tp1BarsSorted[tp1BarsSorted.length/2]) / 2
+        : tp1BarsSorted[Math.floor(tp1BarsSorted.length / 2)])
+    : null;
 
   let mechDiag;
   if (mTotal < 5)                           mechDiag = "bt-neutral";
@@ -783,7 +794,7 @@ function _runBtSim(fisBars) {
     buckets,
     mech: { total: mTotal, wins2nd: wins2nd.length, wins1st: wins1st.length,
             bes: bes.length, losses: losses.length, timeouts: timeouts.length,
-            winRate: mWinRate, pf, expectancy, avgWin, avgLoss, diag: mechDiag },
+            winRate: mWinRate, pf, expectancy, avgWin, avgLoss, avgTp1Bar, medTp1Bar, tp1ReachedN: tp1Reached.length, diag: mechDiag },
     diag,
   };
 }
@@ -850,7 +861,7 @@ function _showScanBt(ticker, idx) {
 
     // \u2500\u2500 \uc139\uc158 2: \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac \u2500\u2500
     const { total: mN, wins2nd, wins1st, bes, losses, timeouts,
-            winRate, pf, expectancy, avgWin, avgLoss, diag: mechDiag } = mech;
+            winRate, pf, expectancy, avgWin, avgLoss, avgTp1Bar, medTp1Bar, tp1ReachedN, diag: mechDiag } = mech;
     const pfStr = pf === Infinity ? "\u221e" : pf.toFixed(2);
     const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
     const wrCol = winRate >= 0.50 ? "#2ea043" : winRate >= 0.40 ? "#d29922" : "#e53935";
@@ -891,6 +902,9 @@ function _showScanBt(ticker, idx) {
         </div>
       </div>`;
       h += `<div class="scan-bt-diag ${verdictClass}">${verdict}</div>`;
+      if (avgTp1Bar !== null) {
+        h += `<div style="font-size:11px;color:var(--text3);margin-top:5px">1차 익절 평균 도달: <b style="color:#56a0d3">${avgTp1Bar.toFixed(1)}봉</b> · 중위수: <b style="color:#56a0d3">${medTp1Bar.toFixed(1)}봉</b> <span style="color:#666">(TP1 도달 ${tp1ReachedN}건 기준)</span></div>`;
+      }
       h += `<div style="font-size:10px;color:#888;margin-top:4px">※ 거래비용·슬리피지 미포함. 과거 성과가 미래를 보장하지 않음</div>`;
     }
 
