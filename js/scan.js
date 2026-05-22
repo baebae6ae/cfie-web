@@ -692,7 +692,6 @@ function _runBtSim(fisBars) {
 
   // \u2500\u2500 2. \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac (50/50 \ubd80\ubd84 \uc775\uc808 \ubaa8\ub378) \u2500\u2500
   const mechTrades = [];
-  let skipUntil = 0;
 
   for (let i = MIN_LB; i < n - 5; i++) {
     const slice     = fisBars.slice(0, i + 1);
@@ -720,7 +719,7 @@ function _runBtSim(fisBars) {
     }
 
     // \uae30\uacc4\uc801 \uc804\ub7b5: FIS\u226560 AND \uc9c4\uc785\uc810\uc218\u226565 AND R:R\u22651.5
-    if (i >= skipUntil && score >= 65 && (fisBars[i].FIS ?? 0) >= 60 && i + 1 < n && i <= n - 26) {
+    if (score >= 65 && (fisBars[i].FIS ?? 0) >= 60 && i + 1 < n && i <= n - 26) {
       const atr   = fisBars[i].ATR14 ?? 0;
       const ema20 = fisBars[i].EMA20 ?? 0;
       if (atr > 0 && ema20 > 0) {
@@ -750,7 +749,6 @@ function _runBtSim(fisBars) {
               + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
             : (exitPrice - entryPrice) / entryPrice * 100;
           mechTrades.push({ pnlPct, exitType });
-          skipUntil = i + 5;
         }
       }
     }
@@ -869,25 +867,31 @@ function _showScanBt(ticker, idx) {
       verdict = `\u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9 \uae30\uacc4\uc801 \uc804\ub7b5 \ubd80\uc801\ud569`; verdictClass = "bt-warn";
     }
 
-    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">\u26a1 \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac (FIS\u226560 \u00b7 \uc9c4\uc785\uc810\uc218\u226565 \u00b7 R:R\u22651.5)</div>`;
-    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">\uc194\uc808=EMA20\u2212ATR \u00b7 1\ucc28(ATR\u00d72) 50%+\uc194\uc808\u2191\uc9c4\uc785\uac00 \u00b7 2\ucc28(ATR\u00d73) \uc794\uc5ec50% \u00b7 25\ubd09 \uae30\uac04\uc81c</div>`;
+    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">⚡ 기계적 전략 시뮬 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>`;
+    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">손절=EMA20−ATR · 1차(ATR×2): 50%+손절↑진입가 · 2차(ATR×3): 잔여 50% · 25봉 기간제</div>`;
     if (mN === 0) {
-      h += `<div class="scan-bt-empty">\uacfc\uac70 \uc2e0\ud638 \uc5c6\uc74c</div>`;
+      h += `<div class="scan-bt-empty">과거 신호 없음</div>`;
     } else {
-      const pc = cnt => mN ? (cnt / mN * 100).toFixed(0) + "%" : "\u2014";
-      h += `<div class="scan-bt-hd"><span>\uacb0\uacfc</span><span>\uac74\uc218</span><span>\ube44\uc728</span></div>`;
-      h += `<div class="scan-bt-row"><span style="color:#2ea043;font-weight:700">2\ucc28\uc775\uc808 (ATR\u00d73)</span><span>${wins2nd}</span><span>${pc(wins2nd)}</span></div>`;
-      h += `<div class="scan-bt-row"><span style="color:#56d364">1\ucc28\uc775\uc808 (ATR\u00d72)</span><span>${wins1st}</span><span>${pc(wins1st)}</span></div>`;
-      h += `<div class="scan-bt-row"><span style="color:#d29922">\ube0c\ub808\uc774\ud06c\uc774\ube10</span><span>${bes}</span><span>${pc(bes)}</span></div>`;
-      h += `<div class="scan-bt-row"><span style="color:#e53935">\uc190\uc808</span><span>${losses}</span><span>${pc(losses)}</span></div>`;
-      h += `<div class="scan-bt-row"><span style="color:#888">\uae30\uac04\ub9cc\ub8cc</span><span>${timeouts}</span><span>${pc(timeouts)}</span></div>`;
-      h += `<div class="scan-bt-diag ${verdictClass}" style="margin-top:6px">
-        \uc2b9\ub960 <b style="color:${wrCol}">${(winRate*100).toFixed(0)}%</b>
-        &nbsp;\u00b7&nbsp; \uc190\uc775\ube44(PF) <b style="color:${pfCol}">${pfStr}</b>
-        &nbsp;\u00b7&nbsp; \uae30\ub300\uac12 <b style="color:${exCol}">${expectancy.toFixed(1)}%</b>
-        <br><span style="font-size:10px">${verdict}</span>
+      h += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
+        <div style="border:1px solid var(--border);padding:6px 8px">
+          <div style="font-size:10px;color:var(--text3)">신호 / 2차 / 1차 / BE / 손절 / 만료</div>
+          <div style="font-size:11px;font-weight:700">${mN}건 | ${wins2nd} / ${wins1st} / ${bes} / ${losses} / ${timeouts}</div>
+        </div>
+        <div style="border:1px solid var(--border);padding:6px 8px">
+          <div style="font-size:10px;color:var(--text3)">승률 (TP1 도달 기준)</div>
+          <div style="font-size:14px;font-weight:800;color:${wrCol}">${(winRate*100).toFixed(0)}%</div>
+        </div>
+        <div style="border:1px solid var(--border);padding:6px 8px">
+          <div style="font-size:10px;color:var(--text3)">평균수익 / 손실</div>
+          <div style="font-size:12px;font-weight:700"><span style="color:#2ea043">+${avgWin.toFixed(1)}%</span> / <span style="color:#e53935">${avgLoss.toFixed(1)}%</span></div>
+        </div>
+        <div style="border:1px solid var(--border);padding:6px 8px">
+          <div style="font-size:10px;color:var(--text3)">손익비(PF) / 기대값</div>
+          <div style="font-size:12px;font-weight:700"><span style="color:${pfCol}">${pfStr}</span> / <span style="color:${exCol}">${expectancy.toFixed(1)}%</span></div>
+        </div>
       </div>`;
-      h += `<div style="font-size:10px;color:#888;margin-top:4px">\uc218\uc775 +${avgWin.toFixed(1)}% / \uc190\uc2e4 ${avgLoss.toFixed(1)}% \u00b7 \uac70\ub798\ube44\uc6a9\u00b7\uc2ac\ub9ac\ud53c\uc9c0 \ubbf8\ud3ec\ud568</div>`;
+      h += `<div class="scan-bt-diag ${verdictClass}">${verdict}</div>`;
+      h += `<div style="font-size:10px;color:#888;margin-top:4px">※ 거래비용·슬리피지 미포함. 과거 성과가 미래를 보장하지 않음</div>`;
     }
 
     panel.innerHTML = h;
