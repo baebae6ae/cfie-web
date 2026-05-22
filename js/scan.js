@@ -242,7 +242,7 @@ function _analyzeFis(ticker, name, bars) {
 
   // RSI 눌림 체크: 최근 8봉 내 RSI<=54 구간 존재 + 현재 RSI >= 50
   const rsiHistory = fisBars.slice(-9, -1).map(b => b.RSI14 ?? 0).filter(r => r > 0);
-  const hadPullback = rsiHistory.some(r => r <= 54);
+  const hadPullback = rsiHistory.some(r => r <= 62);
   const rsi_now = last.RSI14 ?? 0;
   if (!hadPullback || rsi_now < 50) return null;
 
