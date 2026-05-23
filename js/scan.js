@@ -20,6 +20,43 @@ const KUMO_BODY_RATIO   = 0.25;
 // MAX_RESULTS 제한을 사실상 제거 (혹은 충분히 크게 설정)
 const BATCH_SIZE  = 4; 
 const _btFisBarsCache = {};  // 종목별 fisBars 캐시 (백테스트용)
+const SCAN_CACHE_KEY = "cfie_scan_cache_map";
+const SCAN_LAST_KEY  = "cfie_scan_last_tab";
+
+function _scanCacheId(type = _scanType, market = _market) {
+  return `${type}|${market}`;
+}
+
+function _loadScanCacheMap() {
+  try {
+    const raw = sessionStorage.getItem(SCAN_CACHE_KEY);
+    if (raw) return JSON.parse(raw) || {};
+
+    // Legacy single-cache migration (one-time)
+    const legacyRaw = sessionStorage.getItem("cfie_scan_cache");
+    if (!legacyRaw) return {};
+    const legacy = JSON.parse(legacyRaw);
+    if (!legacy?.type || !legacy?.market) return {};
+    const id = _scanCacheId(legacy.type, legacy.market);
+    return {
+      [id]: {
+        type: legacy.type,
+        market: legacy.market,
+        results: legacy.results || [],
+        lastBarDate: legacy.lastBarDate || null,
+        updatedAt: Date.now(),
+      }
+    };
+  } catch (_) {
+    return {};
+  }
+}
+
+function _saveScanCacheMap(cacheMap) {
+  try {
+    sessionStorage.setItem(SCAN_CACHE_KEY, JSON.stringify(cacheMap || {}));
+  } catch (_) {}
+}
 
 // ── UI 제어 ──────────────────────────────────────────────
 function selectScanType(type) {
@@ -153,12 +190,20 @@ async function doScan() {
     // 코스닥 경고 표시/숨김 (백테스트 근거)
     const kosdaqWarnEl = document.getElementById("kosdaqWarn");
     if (kosdaqWarnEl) kosdaqWarnEl.style.display = (_market === "kosdaq" && _scanType === "fis") ? "block" : "none";
-    // 스캔 결과 sessionStorage에 저장 (페이지 이동 후 복귀 시 유지)
+    // 스캔 결과를 (스캔타입|시장)별로 저장 (페이지 이동 후 복귀 시 유지)
     if (!_stopScan && _results.length > 0) {
       try {
-        sessionStorage.setItem("cfie_scan_cache", JSON.stringify({
-          type: _scanType, market: _market, results: _results, lastBarDate: _scanLastBarDate
-        }));
+        const cacheMap = _loadScanCacheMap();
+        const id = _scanCacheId(_scanType, _market);
+        cacheMap[id] = {
+          type: _scanType,
+          market: _market,
+          results: _results,
+          lastBarDate: _scanLastBarDate,
+          updatedAt: Date.now(),
+        };
+        _saveScanCacheMap(cacheMap);
+        sessionStorage.setItem(SCAN_LAST_KEY, id);
       } catch(e) { /* 용량 초과 등 무시 */ }
     }
 
@@ -943,15 +988,22 @@ function _restoreScanCache() {
   const countEl  = document.getElementById("resultCount");
   const labelEl  = document.getElementById("resultLabel");
   try {
-    const raw = sessionStorage.getItem("cfie_scan_cache");
-    if (!raw) { if (rs) rs.style.display = "none"; return; }
-    const cache = JSON.parse(raw);
-    // 현재 선택된 탭/마켓과 다른 캐시면 숨김
-    if (cache.type !== _scanType || cache.market !== _market) {
-      if (rs) rs.style.display = "none"; return;
+    const cacheMap = _loadScanCacheMap();
+    const cache = cacheMap[_scanCacheId(_scanType, _market)];
+    if (!cache) {
+      _results = [];
+      if (rs) rs.style.display = "none";
+      const _kwEl = document.getElementById("kosdaqWarn");
+      if (_kwEl) _kwEl.style.display = "none";
+      return;
     }
     _results = cache.results || [];
-    if (_results.length === 0) { if (rs) rs.style.display = "none"; return; }
+    if (_results.length === 0) {
+      if (rs) rs.style.display = "none";
+      const _kwEl = document.getElementById("kosdaqWarn");
+      if (_kwEl) _kwEl.style.display = "none";
+      return;
+    }
     if (rs)      rs.style.display     = "block";
     if (countEl) countEl.textContent  = `${_results.length}개 발견`;
     const label = { kospi: "코스피", kosdaq: "코스닥", us: "미국" }[_market] || _market;
@@ -969,17 +1021,26 @@ function _restoreScanCache() {
     // 코스닥 경고 복원
     const _kwEl = document.getElementById("kosdaqWarn");
     if (_kwEl) _kwEl.style.display = (cache.market === "kosdaq" && cache.type === "fis") ? "block" : "none";
-  } catch(e) { if (rs) rs.style.display = "none"; }
+  } catch(e) {
+    _results = [];
+    if (rs) rs.style.display = "none";
+  }
 }
 
 // 페이지 로드 시 이전 결과 자동 복원
 document.addEventListener("DOMContentLoaded", () => {
   try {
-    const raw = sessionStorage.getItem("cfie_scan_cache");
-    if (!raw) return;
-    const { type, market } = JSON.parse(raw);
+    const cacheMap = _loadScanCacheMap();
+    const lastId = sessionStorage.getItem(SCAN_LAST_KEY);
+    const fallbackId = Object.keys(cacheMap)[0] || null;
+    const id = lastId || fallbackId;
+    if (!id) {
+      _restoreScanCache();
+      return;
+    }
+    const [type, market] = id.split("|");
     // 저장된 탭/마켓으로 UI 복원 → 내부에서 _restoreScanCache 호출됨
-    if (type)   selectScanType(type);
+    if (type) selectScanType(type);
     if (market) selectMarket(market);
   } catch(e) {}
 });
