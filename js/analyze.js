@@ -34,14 +34,21 @@ async function loadChart(ticker) {
   _currentTicker = ticker.toUpperCase();
   const overlay = document.getElementById("loadingOverlay");
   const main    = document.getElementById("analyzeMain");
+  const url     = new URLSearchParams(location.search);
   
   overlay.style.display = "flex";
   overlay.innerHTML = '<div class="spinner"></div><p style="margin-top:16px;color:var(--text2)">차트 데이터 분석 중…</p>';
   main.style.display    = "none";
 
   try {
-    const tf     = document.getElementById("timeframeSelect")?.value || "1d";
-    const period = document.getElementById("periodSelect")?.value    || "2y";
+    const tfSel     = document.getElementById("timeframeSelect");
+    const periodSel = document.getElementById("periodSelect");
+    const tfParam   = url.get("tf");
+    const periodParam = url.get("period");
+    if (tfSel && tfParam) tfSel.value = tfParam;
+    if (periodSel && periodParam) periodSel.value = periodParam;
+    const tf     = tfSel?.value || tfParam || "1d";
+    const period = periodSel?.value || periodParam || "2y";
     // 섹터·그룹 컨텍스트 감지
     const _sn = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[_currentTicker] : null;
     const _gn = (typeof STOCK_GROUP_MAP  !== "undefined") ? STOCK_GROUP_MAP[_currentTicker]  : null;

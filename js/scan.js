@@ -419,6 +419,15 @@ function _analyzeKumo(ticker, name, bars) {
     }
   }
 
+  const closeV = ich[n - 1].close;
+
+  // 돌파 이후에도 추세가 실제로 이어진 경우만 남김
+  const brkClose = ich[brkIdx]?.close ?? 0;
+  const maxSinceBrk = ich.slice(brkIdx).reduce((m, b) => Math.max(m, b.close ?? 0), 0);
+  const runPct = brkClose > 0 ? ((maxSinceBrk / brkClose) - 1) * 100 : 0;
+  const currentFromBrkPct = brkClose > 0 ? ((closeV / brkClose) - 1) * 100 : 0;
+  if (runPct < 20 || currentFromBrkPct < 0 || closeV < maxSinceBrk * 0.85) return null;
+
   // 조건5: 돌파 전 구름 두께 최솟값
   const thinStart = Math.max(0, brkIdx - 6);
   const thinEnd   = Math.min(n - 1, brkIdx + 2);
@@ -456,8 +465,6 @@ function _analyzeKumo(ticker, name, bars) {
     }
   }
 
-  const closeV = ich[n - 1].close;
-
   return {
     ticker,
     name,
@@ -467,6 +474,8 @@ function _analyzeKumo(ticker, name, bars) {
     bull_cloud:  bull[n - 1] === 1,
     daily_vol:   bigCandle,
     had_twist:   hadTwist,
+    breakout_run: Math.round(runPct * 10) / 10,
+    breakout_gap: Math.round(currentFromBrkPct * 10) / 10,
   };
 }
 
@@ -715,7 +724,7 @@ function renderKumoCard(c) {
       ${c.had_twist  ? '<span class="cs-chip pos">Kumo Twist</span>' : ""}
     </div>
     <div class="cc-actions">
-      <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">차트 분석</button>
+      <button class="cc-btn cc-btn-analyze" onclick="goAnalyze('${c.ticker}', '1wk', '5y')">차트 분석</button>
     </div>
   </div>`;
 }

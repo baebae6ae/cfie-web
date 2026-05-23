@@ -84,8 +84,11 @@ function rvolStatus(rvol) {
 }
 
 // ── 종목 분석 이동 ────────────────────────────────────
-function goAnalyze(ticker) {
-  window.location.href = "analyze.html?t=" + encodeURIComponent(ticker);
+function goAnalyze(ticker, timeframe, period) {
+  const params = new URLSearchParams({ t: ticker });
+  if (timeframe) params.set("tf", timeframe);
+  if (period) params.set("period", period);
+  window.location.href = "analyze.html?" + params.toString();
 }
 function looksLikeTicker(query) {
   return /^[A-Za-z0-9.^=\-]+$/.test((query || "").trim());
