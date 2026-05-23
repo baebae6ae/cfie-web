@@ -418,7 +418,6 @@ function _analyzeKumo(ticker, name, bars) {
       break;
     }
   }
-  if (!hadTwist && bull[n - 1] !== 1) return null;
 
   // 조건5: 돌파 전 구름 두께 최솟값
   const thinStart = Math.max(0, brkIdx - 6);
@@ -458,8 +457,6 @@ function _analyzeKumo(ticker, name, bars) {
   }
 
   const closeV = ich[n - 1].close;
-  // fisBars 캐싱 (백테스트 버튼 클릭 시 재활용)
-  _btFisBarsCache[ticker] = fisBars;
 
   return {
     ticker,
