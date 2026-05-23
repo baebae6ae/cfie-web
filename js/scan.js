@@ -229,8 +229,8 @@ function stopScan() {
 async function _analyzeOne(ticker, name) {
   try {
     if (_scanType === "fis") {
-      // Python: fetch(ticker, "1y")
-      const ohlcv = await fetchOHLCV(ticker, "1y", "1d");
+      // 기계적 전략 검증 안정성을 위해 2년 표본 사용
+      const ohlcv = await fetchOHLCV(ticker, "2y", "1d");
       const { bars } = ohlcv;
       if (!bars || bars.length < 60) return null;
       if (!_scanLastBarDate && ohlcv._lastBarDate) _scanLastBarDate = ohlcv._lastBarDate;
