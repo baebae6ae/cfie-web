@@ -15,6 +15,7 @@ let _currentFIS       = 0;
 let _currentFreshness = 0;
 let _currentRR        = 0;
 let _currentIsKRW     = true;
+let _chartPrefsFromUrlApplied = false;
 
 // ── 초기화 ──────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -45,8 +46,12 @@ async function loadChart(ticker) {
     const periodSel = document.getElementById("periodSelect");
     const tfParam   = url.get("tf");
     const periodParam = url.get("period");
-    if (tfSel && tfParam) tfSel.value = tfParam;
-    if (periodSel && periodParam) periodSel.value = periodParam;
+    // URL 파라미터는 최초 1회만 반영하고, 이후에는 사용자가 드롭다운에서 선택한 값을 유지한다.
+    if (!_chartPrefsFromUrlApplied) {
+      if (tfSel && tfParam) tfSel.value = tfParam;
+      if (periodSel && periodParam) periodSel.value = periodParam;
+      _chartPrefsFromUrlApplied = true;
+    }
     const tf     = tfSel?.value || tfParam || "1d";
     const period = periodSel?.value || periodParam || "2y";
     // 섹터·그룹 컨텍스트 감지
