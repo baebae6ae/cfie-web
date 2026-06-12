@@ -821,6 +821,200 @@ function makeJudgment(enriched) {
   };
 }
 
+// ════════════════════════════════════════════════════════════
+// 기계적 매매 공통 모듈 — scan.js / analyze.js 가 동일 로직 공유
+// 스캔 필터 = 백테스트 시뮬 = 분석 체크리스트가 모두 이 기준 하나를 사용
+// ════════════════════════════════════════════════════════════
+const MECH = {
+  FIS_MIN: 60,          // FIS 최소값 (강한 추세)
+  ENTRY_MIN: 65,        // 통합 진입점수 최소값
+  RR_MIN: 1.5,          // 손익비 최소값
+  GAP_ATR_MIN: 0.3,     // EMA20 이격 최소 (손절 여유 확보)
+  RSI_RECOVER_MIN: 50,  // 현재 RSI 최소 (눌림 후 회복 확인)
+  RSI_PULLBACK_MAX: 62, // 최근 8봉 내 RSI가 이 값 이하로 눌렸어야 함
+  FRESH_MAX_BARS: 35,   // 추세(EMA20>EMA60) 경과 봉 수 상한 (추세 후반 진입 차단)
+  HOLD_BARS: 25,        // 최대 보유 기간 (기간 손절)
+  MIN_LOOKBACK: 80,     // 백테스트 최소 선행 데이터
+  COST_PCT_KR: 0.25,    // 한국 왕복 거래비용 % (수수료+거래세+슬리피지 근사)
+  COST_PCT_US: 0.10,    // 미국 왕복 거래비용 %
+};
+
+// 기계적 진입 사전 필터 (진입점수 계산 전 cheap 조건들)
+// 반환: { pass, fis, gapAtr, rsiNow, hadPullback, freshBars }
+function mechCheapFilterAt(fisBars, i) {
+  const row    = fisBars[i];
+  const fis    = _fnum(row.FIS);
+  const close  = _fnum(row.close);
+  const ema20  = _fnum(row.EMA20, close);
+  const atr    = _fnum(row.ATR14);
+  const gapAtr = atr > 0 ? (close - ema20) / atr : 0;
+  const rsiNow = _fnum(row.RSI14, 0);
+  let hadPullback = false;
+  for (let k = Math.max(0, i - 8); k < i; k++) {
+    const r = _fnum(fisBars[k].RSI14, 0);
+    if (r > 0 && r <= MECH.RSI_PULLBACK_MAX) { hadPullback = true; break; }
+  }
+  const freshBars = _barsInCurrentUptrend(fisBars, i);
+  const pass =
+    fis >= MECH.FIS_MIN &&
+    gapAtr >= MECH.GAP_ATR_MIN &&
+    rsiNow >= MECH.RSI_RECOVER_MIN &&
+    hadPullback &&
+    freshBars >= 1 && freshBars <= MECH.FRESH_MAX_BARS;
+  return { pass, fis, gapAtr, rsiNow, hadPullback, freshBars };
+}
+
+// 기계적 매매 계획: 손절(EMA20−ATR) / TP1(+ATR×2, 50% 청산+BE) / TP2(+ATR×3)
+function mechTradePlan(fisBars, i, entryPrice) {
+  const row   = fisBars[i];
+  const atr   = _fnum(row.ATR14);
+  const ema20 = _fnum(row.EMA20);
+  if (atr <= 0 || ema20 <= 0 || entryPrice <= 0) return null;
+  const stop = ema20 - atr;
+  if (stop <= 0 || stop >= entryPrice) return null;
+  const risk = entryPrice - stop;
+  return {
+    stop,
+    tp1: entryPrice + atr * 2,
+    tp2: entryPrice + atr * 3,
+    rr:  (atr * 3) / risk,
+    atr,
+  };
+}
+
+// ── 기계적 전략 백테스트 (스캔 실전 조건과 100% 동일) ──────────
+// · 신호: FIS≥60 + cheap필터(이격/RSI눌림/신선도) + 진입점수≥65 + R:R≥1.5
+// · 진입: 신호 다음 봉 시가 / 손절: EMA20−ATR (신호봉 기준 고정)
+// · TP1(+ATR×2): 50% 청산 + 손절→진입가(BE) / TP2(+ATR×3): 잔여 청산
+// · 25봉 기간만료 청산 / 포지션 중복 없음(청산 전 신규 신호 무시)
+// · costPct: 왕복 거래비용 % (거래당 1회 차감)
+function runMechBacktest(fisBars, opts = {}) {
+  if (!fisBars) return null;
+  const costPct = opts.costPct ?? 0;
+  const n = fisBars.length;
+  if (n < MECH.MIN_LOOKBACK + 6) return null;
+
+  // 진입점수 구간별 버킷 (지표 변별력 검증용)
+  const bucketKeys = ["90+", "80-90", "65-80", "50-65", "50미만"];
+  const buckets = {};
+  for (const k of bucketKeys)
+    buckets[k] = { counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
+
+  const trades = [];
+  let busyUntil = -1;  // 보유 중인 포지션의 청산 봉 인덱스
+
+  for (let i = MECH.MIN_LOOKBACK; i < n - 5; i++) {
+    const slice = fisBars.slice(0, i + 1);
+    const score = calcEntryScore(slice)?.score ?? 0;
+    const curClose = _fnum(fisBars[i].close);
+
+    // ── 버킷 통계 (모든 봉 대상) ──
+    if (curClose > 0) {
+      const key = score >= 90 ? "90+" : score >= 80 ? "80-90"
+                : score >= 65 ? "65-80" : score >= 50 ? "50-65" : "50미만";
+      for (const p of [1, 3, 5]) {
+        if (i + p >= n) continue;
+        const fwd = _fnum(fisBars[i + p]?.close);
+        if (fwd) { buckets[key].counts[p]++; if (fwd > curClose) buckets[key].wins[p]++; }
+      }
+      const endIdx = Math.min(i + 5, n - 1);
+      let hadMFE = false;
+      for (let j = i + 1; j <= endIdx; j++) {
+        if (_fnum(fisBars[j]?.high) > curClose * 1.02) { hadMFE = true; break; }
+      }
+      buckets[key].counts.mfe++;
+      if (hadMFE) buckets[key].wins.mfe++;
+    }
+
+    // ── 기계적 전략 거래 시뮬 ──
+    if (i <= busyUntil) continue;             // 포지션 보유 중 — 신규 신호 무시
+    if (i > n - 26) continue;                 // 25봉 추적 불가 구간 제외 (통계 편향 방지)
+    if (score < MECH.ENTRY_MIN) continue;
+    if (!mechCheapFilterAt(fisBars, i).pass) continue;
+
+    const nextBar    = fisBars[i + 1];
+    const entryPrice = _fnum(nextBar?.open, _fnum(nextBar?.close));
+    if (entryPrice <= 0) continue;
+    const plan = mechTradePlan(fisBars, i, entryPrice);
+    if (!plan || plan.rr < MECH.RR_MIN) continue;
+
+    const lastIdx = Math.min(i + MECH.HOLD_BARS, n - 1);
+    let exitPrice = _fnum(fisBars[lastIdx]?.close, entryPrice);
+    let exitIdx   = lastIdx;
+    let exitType  = "기간만료";
+    let tp1Hit    = false;
+    let tp1Bar    = null;
+    for (let j = i + 1; j <= lastIdx; j++) {
+      const bj = fisBars[j];
+      if (!bj) continue;
+      const lo = _fnum(bj.low, Infinity);
+      const hi = _fnum(bj.high, 0);
+      const stopLine = tp1Hit ? entryPrice : plan.stop;
+      // 같은 봉에서 손절·익절 모두 가능하면 손절 우선 (보수적)
+      if (lo <= stopLine) {
+        exitPrice = stopLine; exitIdx = j;
+        exitType = tp1Hit ? "브레이크이븐" : "손절";
+        break;
+      }
+      if (!tp1Hit && hi >= plan.tp1) { tp1Hit = true; tp1Bar = j - i; }
+      if (tp1Hit && hi >= plan.tp2) { exitPrice = plan.tp2; exitIdx = j; exitType = "2차익절"; break; }
+    }
+    if (exitType === "기간만료" && tp1Hit) exitType = "1차익절";
+    // 50/50 부분 청산 손익 — TP1 도달 시 절반은 tp1, 나머지는 exitPrice
+    let pnlPct = tp1Hit
+      ? 0.5 * (plan.tp1 - entryPrice) / entryPrice * 100
+        + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
+      : (exitPrice - entryPrice) / entryPrice * 100;
+    pnlPct -= costPct;  // 왕복 거래비용
+    trades.push({ pnlPct, exitType, tp1Bar, entryIdx: i, exitIdx });
+    busyUntil = exitIdx;
+  }
+
+  const mech = mechTradeStats(trades);
+  // 카드 강조용 진단: ok(녹)·neutral(황)·warn(적)
+  const diag = mech.diag === "bt-ok" ? "bt-ok"
+             : mech.diag === "bt-warn" ? "bt-bad" : "bt-warn";
+  return { buckets, trades, mech, diag, costPct };
+}
+
+// 거래 목록 → 통계 (승률=순수익 거래 비율, PF=총이익/총손실 표준 정의)
+function mechTradeStats(trades) {
+  const total    = trades.length;
+  const wins2nd  = trades.filter(t => t.exitType === "2차익절").length;
+  const wins1st  = trades.filter(t => t.exitType === "1차익절").length;
+  const bes      = trades.filter(t => t.exitType === "브레이크이븐").length;
+  const losses   = trades.filter(t => t.exitType === "손절").length;
+  const timeouts = trades.filter(t => t.exitType === "기간만료").length;
+  const profitable = trades.filter(t => t.pnlPct > 0);
+  const losing     = trades.filter(t => t.pnlPct <= 0);
+  const winRate    = total > 0 ? profitable.length / total : 0;
+  const totalProfit = profitable.reduce((s, t) => s + t.pnlPct, 0);
+  const totalLoss   = Math.abs(losing.reduce((s, t) => s + t.pnlPct, 0));
+  const pf          = totalLoss > 0 ? totalProfit / totalLoss : (totalProfit > 0 ? Infinity : 0);
+  const expectancy  = total > 0 ? trades.reduce((s, t) => s + t.pnlPct, 0) / total : 0;
+  const avgWin      = profitable.length ? totalProfit / profitable.length : 0;
+  const avgLoss     = losing.length ? losing.reduce((s, t) => s + t.pnlPct, 0) / losing.length : 0;
+  const tp1Reached  = trades.filter(t => t.tp1Bar !== null);
+  const tp1Bars     = tp1Reached.map(t => t.tp1Bar).sort((a, b) => a - b);
+  const avgTp1Bar   = tp1Reached.length
+    ? tp1Reached.reduce((s, t) => s + t.tp1Bar, 0) / tp1Reached.length : null;
+  const medTp1Bar   = tp1Reached.length
+    ? (tp1Bars.length % 2 === 0
+        ? (tp1Bars[tp1Bars.length / 2 - 1] + tp1Bars[tp1Bars.length / 2]) / 2
+        : tp1Bars[Math.floor(tp1Bars.length / 2)])
+    : null;
+
+  let diag;
+  if (total < 5)                              diag = "bt-neutral";
+  else if (pf >= 1.5 && winRate >= 0.45)      diag = "bt-ok";
+  else if (pf >= 1.0 && expectancy > 0)       diag = "bt-neutral";
+  else                                        diag = "bt-warn";
+
+  return { total, wins2nd, wins1st, bes, losses, timeouts,
+           winRate, pf, expectancy, avgWin, avgLoss,
+           avgTp1Bar, medTp1Bar, tp1ReachedN: tp1Reached.length, diag };
+}
+
 // ── 공통 포맷 헬퍼 ──────────────────────────────────────
 function fisColor(fis) {
   if (fis>=65) return "#D32F2F"; if (fis>=30) return "#E57373";

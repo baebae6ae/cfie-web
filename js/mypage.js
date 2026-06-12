@@ -27,10 +27,24 @@ async function loadMyPage() {
     return;
   }
 
-  // 현재가 조회
+  // 현재가 조회 + 종목별 매매 신호 (손절/익절 기준 — 기계적 규칙과 동일)
   try {
     const tickers = positions.map(p => p.ticker);
     const quotes  = await fetchMultiQuote(tickers);
+
+    // 종목별 ATR/EMA20 계산 (일봉 캐시 활용 — 당일 1회만 네트워크 조회)
+    const techMap = {};
+    await Promise.allSettled(positions.map(async (p) => {
+      try {
+        const { bars } = await fetchOHLCV(p.ticker, "1y", "1d");
+        if (bars?.length >= 30 && typeof calcIndicators === "function") {
+          const e = calcIndicators(bars);
+          const last = e[e.length - 1];
+          techMap[p.ticker] = { atr: last.ATR14 || 0, ema20: last.EMA20 || 0 };
+        }
+      } catch {}
+    }));
+
     let totalCost = 0, totalValue = 0;
 
     const rows = positions.map((p, i) => {
@@ -46,6 +60,31 @@ async function loadMyPage() {
       const sign  = profit >= 0 ? "+" : "";
       const dPct  = q.changePct || 0;
       const dSign = dPct >= 0 ? "+" : "";
+
+      // ── 매매 신호: 손절 EMA20−ATR / TP1 평단가+ATR×2 / TP2 평단가+ATR×3 ──
+      const tech = techMap[p.ticker];
+      let sigHTML = `<span style="color:var(--text3,#999);font-size:11px">지표 없음</span>`;
+      if (tech && tech.atr > 0 && tech.ema20 > 0 && p.cost > 0) {
+        const stop = tech.ema20 - tech.atr;
+        const tp1  = p.cost + tech.atr * 2;
+        const tp2  = p.cost + tech.atr * 3;
+        let badge, sub;
+        if (cur >= tp2) {
+          badge = `<span style="color:#2ea043;font-weight:800">🟢 2차 익절 도달</span>`;
+          sub   = `잔여 전량 매도 검토`;
+        } else if (cur >= tp1) {
+          badge = `<span style="color:#b8860b;font-weight:800">🟡 1차 익절 도달</span>`;
+          sub   = `50% 매도 + 손절선→평단가(${fmt(p.cost,0)})`;
+        } else if (cur <= stop) {
+          badge = `<span style="color:#e53935;font-weight:800">⛔ 손절선 이탈</span>`;
+          sub   = `손절 기준 ${fmt(stop,0)} — 청산 검토`;
+        } else {
+          badge = `<span style="color:var(--text2,#666);font-weight:700">보유 유지</span>`;
+          sub   = `손절 ${fmt(stop,0)} · 1차 ${fmt(tp1,0)}`;
+        }
+        sigHTML = `${badge}<div style="font-size:10.5px;color:var(--text3,#999);margin-top:2px">${sub}</div>`;
+      }
+
       return `<tr>
         <td>
           <div class="mp-table-rank">${i + 1}</div>
@@ -63,6 +102,7 @@ async function loadMyPage() {
         <td class="mp-table-price">${fmt(value, 0)}</td>
         <td class="${pCls}">${sign}${fmt(profit, 0)}</td>
         <td class="${pCls}">${sign}${pct.toFixed(2)}%</td>
+        <td style="min-width:140px">${sigHTML}</td>
         <td>
           <button class="mp-table-btn" onclick="goAnalyze('${p.ticker}')">분석</button>
           <button class="mp-table-btn" onclick="openMpBuyModal('${p.ticker}','${p.name}',${cur})">추가매수</button>
@@ -93,7 +133,7 @@ async function loadMyPage() {
         <table class="mp-table">
           <thead><tr>
             <th>#</th><th>종목</th><th>수량</th><th>평단가</th><th>현재가</th>
-            <th>평가금액</th><th>손익</th><th>수익률</th><th></th>
+            <th>평가금액</th><th>손익</th><th>수익률</th><th>매매 신호</th><th></th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>

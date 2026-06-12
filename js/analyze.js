@@ -15,6 +15,11 @@ let _currentFIS       = 0;
 let _currentFreshness = 0;
 let _currentRR        = 0;
 let _currentIsKRW     = true;
+// 기계적 진입 cheap 조건 상태 (스캔과 동일 기준 — indicators.js MECH)
+let _currentGapAtr      = 0;
+let _currentHadPullback = false;
+let _currentRsiNow      = 0;
+let _currentFreshBars   = 0;
 let _chartPrefsFromUrlApplied = false;
 
 // ── 초기화 ──────────────────────────────────────────────
@@ -103,6 +108,19 @@ async function loadChart(ticker) {
     _currentBBUP      = _sl?.BB_UP  || 0;
     _currentClose     = _sl?.close  || 0;
     _currentIsKRW     = (meta?.currency || "") !== "USD";
+
+    // 기계적 진입 cheap 조건 (스캔과 동일 — EMA20 이격 / RSI 눌림·회복 / 신선도)
+    const _cheap = mechCheapFilterAt(fisBars, fisBars.length - 1);
+    _currentGapAtr      = _cheap.gapAtr;
+    _currentHadPullback = _cheap.hadPullback;
+    _currentRsiNow      = _cheap.rsiNow;
+    _currentFreshBars   = _cheap.freshBars;
+
+    // 평단가 미입력 시 현재 종가로 자동 채움 → 손절/익절/R:R 즉시 표시
+    const _avgInp = document.getElementById("avgCostInput");
+    if (_avgInp && !_avgInp.value && _currentClose > 0) {
+      _avgInp.value = _currentIsKRW ? Math.round(_currentClose) : +_currentClose.toFixed(2);
+    }
     onAvgCostChange();
 
     const entry    = calcEntryScore(fisBars, _entryContext);
@@ -355,6 +373,7 @@ function onRiskBtn(btn) {
 }
 
 // ── 기계적 진입 체크리스트 업데이트 ───────────────────────────
+// 스캔(_analyzeFis)과 완전히 동일한 6가지 조건 — indicators.js MECH 기준
 function renderChecklist() {
   function _upd(iconId, valId, pass, val) {
     const ic = document.getElementById(iconId);
@@ -362,16 +381,18 @@ function renderChecklist() {
     if (ic) { ic.textContent = pass ? "☑" : "☐"; ic.style.color = pass ? "var(--bull,#2ea043)" : "var(--bear,#e53935)"; }
     if (vl) { vl.textContent = val; vl.style.color = pass ? "var(--bull,#2ea043)" : "var(--bear,#e53935)"; }
   }
-  // 스캔과 동일한 기준 (entry>=65, FIS>=60, fresh>=0, R:R>=1.5)
-  const scorePass = _currentEntryScore >= 65;
+  const loaded    = _currentEntryScore > 0;
+  const scorePass = _currentEntryScore >= MECH.ENTRY_MIN;
   const scoreOpt  = _currentEntryScore >= 80;   // 최적 진입 구간
-  const fisPass   = _currentFIS >= 60;
+  const fisPass   = _currentFIS >= MECH.FIS_MIN;
   const fisOpt    = _currentFIS >= 80;           // 강한 추세
-  const freshPass = _currentFreshness >= 0;
+  const freshPass = _currentFreshBars >= 1 && _currentFreshBars <= MECH.FRESH_MAX_BARS;
+  const gapPass   = _currentGapAtr >= MECH.GAP_ATR_MIN;
+  const pullPass  = _currentHadPullback && _currentRsiNow >= MECH.RSI_RECOVER_MIN;
   const rrEntered = _currentRR > 0;
-  const rrPass    = _currentRR >= 1.5;
+  const rrPass    = _currentRR >= MECH.RR_MIN;
 
-  const scoreLabel = _currentEntryScore > 0
+  const scoreLabel = loaded
     ? _currentEntryScore.toFixed(0) + "점" + (scoreOpt ? " ★" : "")
     : "—";
   _upd("mch-score-icon","mch-score-val", scorePass, scoreLabel);
@@ -381,9 +402,16 @@ function renderChecklist() {
     : "—";
   _upd("mch-fis-icon","mch-fis-val", fisPass, fisStr);
 
-  const freshStr = _currentFreshness > 0 ? "+"+_currentFreshness.toFixed(1)+"pt"
-    : _currentFreshness < 0 ? _currentFreshness.toFixed(1)+"pt" : "0pt";
-  _upd("mch-fresh-icon","mch-fresh-val", freshPass, _currentEntryScore > 0 ? freshStr : "—");
+  const freshStr = _currentFreshBars > 0 ? `${_currentFreshBars}봉 경과` : "추세 아님";
+  _upd("mch-fresh-icon","mch-fresh-val", freshPass, loaded ? freshStr : "—");
+
+  const gapStr = `${_currentGapAtr >= 0 ? "+" : ""}${_currentGapAtr.toFixed(2)} ATR`;
+  _upd("mch-gap-icon","mch-gap-val", gapPass, loaded ? gapStr : "—");
+
+  const pullStr = !_currentHadPullback ? "눌림 없음 (추격 위험)"
+    : _currentRsiNow >= MECH.RSI_RECOVER_MIN ? `RSI ${_currentRsiNow.toFixed(0)} 회복`
+    : `RSI ${_currentRsiNow.toFixed(0)} 미회복`;
+  _upd("mch-pull-icon","mch-pull-val", pullPass, loaded ? pullStr : "—");
 
   if (!rrEntered) {
     const ic2 = document.getElementById("mch-rr-icon");
@@ -396,25 +424,39 @@ function renderChecklist() {
 
   const vEl = document.getElementById("mechVerdict");
   if (!vEl) return;
-  if (_currentEntryScore === 0) { vEl.textContent = "차트 로드 후 계산"; vEl.className = "mech-verdict mech-wait"; return; }
-  const basePass = scorePass && fisPass && freshPass;
+  if (!loaded) { vEl.textContent = "차트 로드 후 계산"; vEl.className = "mech-verdict mech-wait"; return; }
+  const basePass = scorePass && fisPass && freshPass && gapPass && pullPass;
   if (!basePass) {
-    const failed = [!scorePass&&"진입점수(65미만)",!fisPass&&"FIS(60미만)",!freshPass&&"신선도"].filter(Boolean);
+    const failed = [
+      !scorePass && "진입점수(65미만)",
+      !fisPass   && "FIS(60미만)",
+      !freshPass && "추세신선도",
+      !gapPass   && "EMA20이격",
+      !pullPass  && "RSI눌림",
+    ].filter(Boolean);
     vEl.textContent = "⛔ "+failed.join("·")+" — 관망";
     vEl.className = "mech-verdict mech-no";
   } else if (!rrEntered) {
     const optNote = (scoreOpt && fisOpt) ? " (최적 구간 ★)" : "";
-    vEl.textContent = "⚡ 기본 3조건 충족"+optNote+" — 평단가 입력 후 R:R 확인";
+    vEl.textContent = "⚡ 기본 5조건 충족"+optNote+" — 평단가 입력 후 R:R 확인";
     vEl.className = "mech-verdict mech-wait";
   } else if (!rrPass) {
     vEl.textContent = "⛔ R:R "+_currentRR.toFixed(2)+" 불리 — 진입 포기";
     vEl.className = "mech-verdict mech-no";
   } else {
     const grade = (scoreOpt && fisOpt) ? "✅ 최적 조건 충족 ★ — 기계적 진입 적극 고려"
-                                       : "✅ 조건 충족 — 기계적 진입 가능";
+                                       : "✅ 6조건 모두 충족 — 기계적 진입 가능";
     vEl.textContent = grade;
     vEl.className = "mech-verdict mech-ok";
   }
+}
+
+// ── 평단가 입력에 현재가 채우기 (버튼) ─────────────────────────
+function fillCurrentPrice() {
+  const inp = document.getElementById("avgCostInput");
+  if (!inp || !(_currentClose > 0)) return;
+  inp.value = _currentIsKRW ? Math.round(_currentClose) : +_currentClose.toFixed(2);
+  onAvgCostChange();
 }
 
 // ── 종목 헤더 ────────────────────────────────────────────
@@ -538,11 +580,12 @@ function renderChart(bars, fisBars, tf, meta) {
       timeScale:{borderColor:"#ccc", timeVisible:tf!=="1d"}
     });
     _macdChart.priceScale("right").applyOptions({ scaleMargins:{top:0.1,bottom:0.1} });
+    // 주의: indicators.js 필드명은 MACD_SIG (MACD_SIGNAL 아님)
     const macdData   = fisBars.map(b=>b.MACD!=null&&!isNaN(b.MACD)?{time:b.time,value:b.MACD}:null).filter(Boolean);
-    const signalData = fisBars.map(b=>b.MACD_SIGNAL!=null&&!isNaN(b.MACD_SIGNAL)?{time:b.time,value:b.MACD_SIGNAL}:null).filter(Boolean);
+    const signalData = fisBars.map(b=>b.MACD_SIG!=null&&!isNaN(b.MACD_SIG)?{time:b.time,value:b.MACD_SIG}:null).filter(Boolean);
     const histData   = fisBars.map(b=>{
-      if (b.MACD==null||b.MACD_SIGNAL==null||isNaN(b.MACD)||isNaN(b.MACD_SIGNAL)) return null;
-      const hist = b.MACD - b.MACD_SIGNAL;
+      if (b.MACD==null||b.MACD_SIG==null||isNaN(b.MACD)||isNaN(b.MACD_SIG)) return null;
+      const hist = b.MACD - b.MACD_SIG;
       return {time:b.time, value:hist, color:hist>=0?"#CC000088":"#0047AB88"};
     }).filter(Boolean);
     if (histData.length)   _macdChart.addHistogramSeries({priceFormat:{type:"price"},title:"MACD Hist"}).setData(histData);
@@ -679,13 +722,13 @@ function renderChart(bars, fisBars, tf, meta) {
         markerDefs.push({ time: b.time, position: "aboveBar", color: "#0047AB", shape: "arrowDown", text: "DC",
           title: "EMA 데드크로스", desc: `EMA20(${fmt(b.EMA20,_dec)})이 EMA60(${fmt(b.EMA60,_dec)})을 하향 돌파. 중기 추세 약화 신호.` });
     }
-    if (pb.MACD != null && pb.MACD_SIGNAL != null && b.MACD != null && b.MACD_SIGNAL != null) {
-      if (pb.MACD <= pb.MACD_SIGNAL && b.MACD > b.MACD_SIGNAL)
+    if (pb.MACD != null && pb.MACD_SIG != null && b.MACD != null && b.MACD_SIG != null) {
+      if (pb.MACD <= pb.MACD_SIG && b.MACD > b.MACD_SIG)
         markerDefs.push({ time: b.time, position: "belowBar", color: "#2ea043", shape: "circle", text: "M↑",
-          title: "MACD 골든크로스", desc: `MACD(${b.MACD.toFixed(2)})가 Signal(${b.MACD_SIGNAL.toFixed(2)})을 상향 돌파. 단기 모멘텀 전환.` });
-      if (pb.MACD >= pb.MACD_SIGNAL && b.MACD < b.MACD_SIGNAL)
+          title: "MACD 골든크로스", desc: `MACD(${b.MACD.toFixed(2)})가 Signal(${b.MACD_SIG.toFixed(2)})을 상향 돌파. 단기 모멘텀 전환.` });
+      if (pb.MACD >= pb.MACD_SIG && b.MACD < b.MACD_SIG)
         markerDefs.push({ time: b.time, position: "aboveBar", color: "#e53935", shape: "circle", text: "M↓",
-          title: "MACD 데드크로스", desc: `MACD(${b.MACD.toFixed(2)})가 Signal(${b.MACD_SIGNAL.toFixed(2)})을 하향 돌파. 단기 모멘텀 둔화.` });
+          title: "MACD 데드크로스", desc: `MACD(${b.MACD.toFixed(2)})가 Signal(${b.MACD_SIG.toFixed(2)})을 하향 돌파. 단기 모멘텀 둔화.` });
     }
     if (pb.RSI14 != null && b.RSI14 != null && pb.RSI14 < 30 && b.RSI14 >= 30)
       markerDefs.push({ time: b.time, position: "belowBar", color: "#d29922", shape: "arrowUp", text: "R↑",
@@ -857,7 +900,7 @@ function _buildAnalysisSummary(score, comp, m, setupName, setupName2) {
   if (score >= 80) {
     const atrNote = gapAtr > 2.5 ? `, ATR 이격(${gapAtr.toFixed(1)}) 과대한 점 감안` : "";
     const _fw = (comp['추세신선도']??0) <= -4 ? ' ⚠ 추세 후반(' + (m.freshness_bars??'?') + '봉 경과) — 기계적 백테스트 확인 필수' : '';
-    action = '→ 조건 충족' + atrNote + '. Chandelier 손절 + ATR×2 익절 설정 후 집행' + _fw;
+    action = '→ 조건 충족' + atrNote + '. 손절(EMA20−ATR)·1차 익절(+ATR×2) 주문 설정 후 집행' + _fw;
   } else if (score >= 65) {
     const weak = [
       { name: "확인신호",   v: confirm,   thr: 16 },
@@ -962,7 +1005,7 @@ function renderEntryScore(entry) {
     { num:"②", name:`진입 구조 — ${setupName}${setupName2?" + "+setupName2:""}`, v:structure, max:30, ideal:"20 이상 최적",
       desc: setupDesc[setupName] || "—",
       extra: `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${setupChips}</div>` },
-    { num:"③", name:"확인 신호", v:confirm, max:24, ideal:"16 이상 최적",
+    { num:"③", name:"확인 신호", v:confirm, max:28, ideal:"16 이상 최적",
       desc: confirm>=18?"EMA·MACD·거래량·기준선 신호 모두 동반":confirm>=12?"핵심 신호 대부분 확인":confirm>=6?"일부 신호만 충족 — 추가 봉 확인 권장":"명확한 진입 신호 부족" },
     { num:"④", name:"저항 여유", v:space, max:18, ideal:"10 이상 최적",
       desc: space>=12?"52주·BB 상단 여유 충분 — 저항 부담 낮음":space>=6?"적정 상승 공간 확인":space>=0?"일부 저항 부담 있음":"상단 저항 과부담 — 추격 불리" },
@@ -970,14 +1013,14 @@ function renderEntryScore(entry) {
       desc: riskCtrl>=12?"과열 없고 손절 거리 적정 — 위험 관리 양호":riskCtrl>=8?"리스크 통제 가능 수준":riskCtrl>=4?"일부 위험 요소 — 손절 기준 명확히 설정":"ATR 이격 크거나 위험 감점 높음" },
     { num:"⑦", name:"섹터·그룹 추세", v: extScore ?? 0, max:12,
       ideal:"섹터 ETF FIS 기반",
-      desc: extScore == null ? "섹터/그룹 정보 없음 (메핑에 없는 종목)" :
-            extScore >= 8 ? "섹터·그룹 모두 강세 — 추세력 듹반 효과" :
+      desc: extScore == null ? "섹터/그룹 정보 없음 (매핑에 없는 종목)" :
+            extScore >= 8 ? "섹터·그룹 모두 강세 — 추세 동반 효과" :
             extScore >= 3 ? "섹터 또는 그룹 업종 추세 양호" :
             extScore >= 0 ? "섹터·그룹 중립 — 종목 자체 모멘텀 집중" :
-                            "섹터 또는 그룹 앝세 — 추가 주의",
+                            "섹터 또는 그룹 약세 — 추가 주의",
       extra: '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + sectorTag + groupTag + '<span style="color:' + extCol + ';font-weight:700">' + extStr + 'pt</span></div>' },
     { num:"⑨", name:"추세 신선도 (독립지표)", v: freshnessScore, max:8, ideal:"20봉 이내 최적",
-      desc: freshnessBars === 0 ? "EMA20 < EMA60 — 하락/회bo 구간, 기계적 진입 비권장" :
+      desc: freshnessBars === 0 ? "EMA20 < EMA60 — 하락/횡보 구간, 기계적 진입 비권장" :
             freshnessBars <= 10 ? `골든크로스 후 ${freshnessBars}봉 — 추세 초반 최적 진입 구간` :
             freshnessBars <= 20 ? `추세 진입 ${freshnessBars}봉 경과 — 상승 초중반, 기계적 진입 유효` :
             freshnessBars <= 35 ? `추세 진입 ${freshnessBars}봉 경과 — 중반, 상승 여력 점검 권장` :
@@ -1092,149 +1135,40 @@ function renderTable(fisBars) {
 }
 
 // ── 진입 점수 백테스트 (현재 종목 기준) ─────────────────────────────────
-function runBacktest(fisBars) {
-  // 다중 기간 백테스트: +1봉, +3봉, +5봉 종가 상승률 + MFE(5봉내 +1% 도달률)
-  // 진입점수는 1봉 예측이 아닌 스윙 세팅 품질 지표 → 5봉 기준이 의미 있음
-  const MIN_LOOKBACK = 80;
-  const n = fisBars.length;
-  if (n < MIN_LOOKBACK + 6) return null;
+// 시뮬 코어는 indicators.js::runMechBacktest — 스캔 페이지와 100% 동일 조건
+// (FIS·이격·RSI눌림·신선도·진입점수·R:R + 중복 포지션 금지 + 거래비용 차감)
 
-  const PERIODS = [1, 3, 5];
-  const keys = ["90+", "80-90", "65-80", "50-65", "50미만"];
-  const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922","50미만":"#888"};
-  const buckets = {};
-  for (const k of keys) {
-    buckets[k] = { color: COLORS[k], counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
+function _renderMechBt(mech, costPct) {
+  if (!mech || mech.total === 0) {
+    return `<div class="bt-diag bt-neutral" style="margin-top:10px">⚡ 기계적 전략 (스캔과 동일 조건) 과거 신호 없음</div>`;
   }
-  const mechTrades = [];
-
-  for (let i = MIN_LOOKBACK; i < n - 5; i++) {
-    const slice = fisBars.slice(0, i + 1);
-    const score = calcEntryScore(slice).score;
-    if (score < 0) continue;  // 음수 제외 (100점 클램프 범위 밖)
-    const curClose = fisBars[i].close;
-    if (!curClose || curClose <= 0) continue;
-
-    const key = score >= 90 ? "90+" : score >= 80 ? "80-90" : score >= 65 ? "65-80" : score >= 50 ? "50-65" : "50미만";
-
-    for (const p of PERIODS) {
-      if (i + p >= n) continue;
-      const fwdClose = fisBars[i + p]?.close;
-      if (!fwdClose) continue;
-      buckets[key].counts[p]++;
-      if (fwdClose > curClose) buckets[key].wins[p]++;
-    }
-    // MFE: 5봉 내 현재가 대비 +1% 이상 고점 도달 여부 (수익 기회율)
-    const endIdx = Math.min(i + 5, n - 1);
-    let hadMFE = false;
-    for (let j = i + 1; j <= endIdx; j++) {
-      if ((fisBars[j]?.high || 0) > curClose * 1.02) { hadMFE = true; break; }
-    }
-    buckets[key].counts.mfe++;
-    if (hadMFE) buckets[key].wins.mfe++;
-
-
-    // 기계적 전략 시뮬: FIS>=60 AND 진입점수>=65 (신호 조건 일치) 시
-    if (score >= 65 && (fisBars[i].FIS || 0) >= 60 && i + 1 < n && i <= n - 26) {
-      const atr = fisBars[i].ATR14 || 0;
-      const ema20 = fisBars[i].EMA20 || 0;
-      if (atr > 0 && ema20 > 0) {
-        const stopPrice = ema20 - atr;          // EMA20-ATR (기본 손절)
-        const nextBar = fisBars[i + 1];
-        const entryPrice = nextBar ? (nextBar.open || nextBar.close || 0) : 0;
-        const rr_risk = entryPrice - stopPrice;
-        if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice && (atr * 3) / rr_risk >= 1.5) {
-          const tp1Price = entryPrice + atr * 2;  // 1차익절: ATR×2
-          const tp2Price = entryPrice + atr * 3;  // 2차익절: ATR×3
-          let exitPrice = (fisBars[Math.min(i + 25, n - 1)]?.close || entryPrice);
-          let exitType = "기간만료";
-          let tp1Hit = false;
-          let tp1Bar = null;
-          for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
-            const bj = fisBars[j];
-            if (!bj) continue;
-            const stopLine = tp1Hit ? entryPrice : stopPrice;
-            if ((bj.low || Infinity) <= stopLine) {
-              exitPrice = stopLine;
-              exitType = tp1Hit ? "브레이크이븐" : "손절";
-              break;
-            }
-            if (!tp1Hit && (bj.high || 0) >= tp1Price) { tp1Hit = true; tp1Bar = j - i; }
-            if (tp1Hit && (bj.high || 0) >= tp2Price)  { exitPrice = tp2Price; exitType = "2차익절"; break; }
-          }
-          // TP1 달성했지만 TP2 미달 후 기간 만료 → "1차익절" 분류
-          // (exitPrice = 25봉 종가 = 나머지 50% 실제 청산가, tp1Price로 덧어쓰지 않음)
-          if (exitType === "기간만료" && tp1Hit) {
-            exitType = "1차익절";
-          }
-          // 50/50 부분 익절: TP1 도달 시 50% → tp1Price, 나머지 50% → exitPrice
-          const pnlPct = tp1Hit
-            ? 0.5 * (tp1Price - entryPrice) / entryPrice * 100
-              + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
-            : (exitPrice - entryPrice) / entryPrice * 100;
-          mechTrades.push({ pnlPct, exitType, tp1Bar });
-        }
-      }
-    }
-  }
-  return { buckets, mechTrades };
-}
-
-
-
-function _renderMechBt(mechTrades) {
-  if (!mechTrades || mechTrades.length === 0) {
-    return `<div class="bt-diag bt-neutral" style="margin-top:10px">⚡ 기계적 전략 (FIS≥60 + 진입점수≥65) 과거 신호 없음</div>`;
-  }
-  const n        = mechTrades.length;
-  const wins2nd  = mechTrades.filter(t => t.exitType === "2차익절");
-  const wins1st  = mechTrades.filter(t => t.exitType === "1차익절");
-  const breakevens = mechTrades.filter(t => t.exitType === "브레이크이븐");
-  const losses   = mechTrades.filter(t => t.exitType === "손절");
-  const timeouts = mechTrades.filter(t => t.exitType === "기간만료");
-  // wins = TP1 도달 케이스 모두 (2차+1차+BE, 이제는 모두 부분 수익이므로 플러스)
-  const wins     = [...wins2nd, ...wins1st, ...breakevens];
-  const winRate   = wins.length / n;
-  const avgWin    = wins.length   ? wins.reduce((s,t)=>s+t.pnlPct,0)/wins.length   : 0;
-  const avgLoss   = losses.length ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length : 0;
-  const totalProfit = wins.reduce((s,t)=>s+t.pnlPct,0);
-  const totalLoss   = Math.abs(losses.reduce((s,t)=>s+t.pnlPct,0));
-  const pf          = totalLoss > 0 ? totalProfit/totalLoss : (totalProfit>0 ? Infinity : 0);
-  const expectancy  = mechTrades.reduce((s,t)=>s+t.pnlPct,0)/n;
-  const tp1Reached  = mechTrades.filter(t => t.tp1Bar !== null);
-  const tp1Bars     = tp1Reached.map(t => t.tp1Bar).sort((a, b) => a - b);
-  const avgTp1Bar   = tp1Reached.length
-    ? tp1Reached.reduce((s, t) => s + t.tp1Bar, 0) / tp1Reached.length
-    : null;
-  const medTp1Bar   = tp1Reached.length
-    ? (tp1Bars.length % 2 === 0
-      ? (tp1Bars[tp1Bars.length / 2 - 1] + tp1Bars[tp1Bars.length / 2]) / 2
-      : tp1Bars[Math.floor(tp1Bars.length / 2)])
-    : null;
+  const { total: n, wins2nd, wins1st, bes, losses, timeouts,
+          winRate, pf, expectancy, avgWin, avgLoss,
+          avgTp1Bar, medTp1Bar, tp1ReachedN, diag } = mech;
   const pfCol = pf >= 1.5 ? "#2ea043" : pf >= 1.0 ? "#d29922" : "#e53935";
   const wrCol = winRate >= 0.50 ? "#2ea043" : winRate >= 0.40 ? "#d29922" : "#e53935";
   const exCol = expectancy > 0 ? "#2ea043" : "#e53935";
   let verdict, verdictClass;
   if (n < 5) {
-    verdict = `⚠ 신호 ${n}건 — 5건 미만, 통계 신뢰 낙음`; verdictClass = "bt-neutral";
-  } else if (pf >= 1.5 && winRate >= 0.45) {
+    verdict = `⚠ 신호 ${n}건 — 5건 미만, 통계 신뢰 낮음`; verdictClass = "bt-neutral";
+  } else if (diag === "bt-ok") {
     verdict = `✓ 손익비·승률 양호 — 이 종목 기계적 전략 적용 가능`; verdictClass = "bt-ok";
-  } else if (pf >= 1.0 && expectancy > 0) {
+  } else if (diag === "bt-neutral") {
     verdict = `△ 기대값 플러스·손익비 약함 — 포지션 규모 조절 필요`; verdictClass = "bt-neutral";
   } else {
     verdict = `⚠ 기대값 마이너스 — 이 종목 기계적 전략 부적합`; verdictClass = "bt-warn";
   }
   const pfStr = pf === Infinity ? "∞" : pf.toFixed(2);
   return `<div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
-    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시뮬 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 1차(ATR×2): 50%+손절↑진입가 | 2차(ATR×3): 잔여 50% | 25봉 기간제</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시뮬 — 스캔과 동일 조건 (FIS·이격·RSI눌림·신선도·점수·R:R)</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 1차(ATR×2): 50%+손절↑진입가 | 2차(ATR×3): 잔여 50% | 25봉 기간제 | 중복 포지션 없음</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
       <div style="border:1px solid var(--border);padding:6px 8px">
         <div style="font-size:10px;color:var(--text3)">신호 / 2차 / 1차 / BE / 손절 / 만료</div>
-        <div style="font-size:11px;font-weight:700">${n}건 | ${wins2nd.length} / ${wins1st.length} / ${breakevens.length} / ${losses.length} / ${timeouts.length}</div>
+        <div style="font-size:11px;font-weight:700">${n}건 | ${wins2nd} / ${wins1st} / ${bes} / ${losses} / ${timeouts}</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
-        <div style="font-size:10px;color:var(--text3)">승률 (TP1 도달 기준)</div>
+        <div style="font-size:10px;color:var(--text3)">승률 (비용 차감 후 순수익 기준)</div>
         <div style="font-size:14px;font-weight:800;color:${wrCol}">${(winRate*100).toFixed(0)}%</div>
       </div>
       <div style="border:1px solid var(--border);padding:6px 8px">
@@ -1248,9 +1182,9 @@ function _renderMechBt(mechTrades) {
     </div>
     <div class="bt-diag ${verdictClass}">${verdict}</div>
     ${avgTp1Bar !== null
-      ? `<div style="font-size:11px;color:var(--text2);margin-top:5px">1차 익절 평균 도달: <b style="color:#56a0d3">${avgTp1Bar.toFixed(1)}봉</b> · 중위수: <b style="color:#56a0d3">${medTp1Bar.toFixed(1)}봉</b> <span style="color:var(--text3)">(TP1 도달 ${tp1Reached.length}건 기준)</span></div>`
+      ? `<div style="font-size:11px;color:var(--text2);margin-top:5px">1차 익절 평균 도달: <b style="color:#56a0d3">${avgTp1Bar.toFixed(1)}봉</b> · 중위수: <b style="color:#56a0d3">${medTp1Bar.toFixed(1)}봉</b> <span style="color:var(--text3)">(TP1 도달 ${tp1ReachedN}건 기준)</span></div>`
       : ""}
-    <div style="font-size:10px;color:var(--text3);margin-top:4px">※ 거래비용·슬리피지 미포함. 과거 성과가 미래를 보장하지 않음</div>
+    <div style="font-size:10px;color:var(--text3);margin-top:4px">※ 왕복 거래비용 ${(costPct ?? 0).toFixed(2)}% 차감 반영. 과거 성과가 미래를 보장하지 않음</div>
   </div>`;
 }
 
@@ -1262,11 +1196,14 @@ function renderBacktest(fisBars) {
 
   // 비동기 실행 — UI 블로킹 방지
   setTimeout(() => {
-    const btResult = runBacktest(fisBars);
+    const costPct  = _currentIsKRW ? MECH.COST_PCT_KR : MECH.COST_PCT_US;
+    const btResult = runMechBacktest(fisBars, { costPct });
     if (!btResult) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 86봉 필요)</div>"; return; }
-    const { buckets, mechTrades } = btResult;
+    const { buckets, mech } = btResult;
 
     const keys = ["90+", "80-90", "65-80", "50-65", "50미만"];
+    const COLORS = {"90+":"#1a7a34","80-90":"#2ea043","65-80":"#56a0d3","50-65":"#d29922","50미만":"#888"};
+    for (const k of keys) buckets[k].color = COLORS[k];
 
     // ── 헤더 ──
     let html = `
@@ -1352,7 +1289,7 @@ function renderBacktest(fisBars) {
       <b>점수↑=MFE↑</b>가 확인되면 이 종목에서 지표 변별력이 유효합니다.
     </div>`
 
-    html += _renderMechBt(mechTrades);
+    html += _renderMechBt(mech, costPct);
     el.innerHTML = html;
   }, 10);
 }

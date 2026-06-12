@@ -9,8 +9,8 @@ let _universe        = {};
 let _results         = [];
 let _scanLastBarDate = null;  // 현재 스캔에 사용된 데이터의 마지막 종가 날짜
 
-// 필터 기준 및 설정
-const FIS_FILTER = { fis: 30, entry: 55, risk: -16, trend: 0 };
+// 필터 기준: 기계적 진입 조건은 indicators.js의 MECH 상수로 일원화
+// (스캔 필터 = 백테스트 시뮬 = 분석 페이지 체크리스트 모두 동일 기준)
 const KUMO_BELOW_MIN    = 10;
 const KUMO_BRK_LOOKBACK = 18;
 const KUMO_TWIST_RANGE  = 8;
@@ -77,6 +77,11 @@ function selectMarket(market) {
 }
 
 // ── 스캔 로직 (전체 종목 순회 및 비차단 상호작용) ──────────────
+// 시장별 왕복 거래비용 % (백테스트 기대값에 반영)
+function _mechCostPct(market = _market) {
+  return market === "us" ? MECH.COST_PCT_US : MECH.COST_PCT_KR;
+}
+
 // 섹터 ETF FIS 캐시 (스캔 시작 시 1회 조회)
 const _sectorFISCache = {};
 
@@ -171,7 +176,10 @@ async function doScan() {
     // 모든 스캔 완료 후 정렬 재배치
     if (_results.length > 0 && !_stopScan) {
       if (_scanType === "fis") {
-        _results.sort((a, b) => (b.entry_score || 0) - (a.entry_score || 0));
+        // 1순위: 종목별 백테스트 진단 (유효 → 중립 → 부적합), 2순위: 진입점수
+        const _btRank = c => c.btDiag === "bt-ok" ? 0 : c.btDiag === "bt-bad" ? 2 : 1;
+        _results.sort((a, b) =>
+          _btRank(a) - _btRank(b) || (b.entry_score || 0) - (a.entry_score || 0));
         if (grid) grid.innerHTML = _results.map((c, i) => renderFisCard(c, i)).join("");
       } else if (_scanType === "kumo") {
         _results.sort((a, b) => (b.below_weeks || 0) - (a.below_weeks || 0));
@@ -185,7 +193,7 @@ async function doScan() {
       const _dateNote = _scanLastBarDate ? ` — ${_scanLastBarDate} 종가 기준` : "";
       resultLabel.textContent = _scanType === "kumo"
         ? `${label} 전체 분석 완료 (체류기간 순)${_dateNote}`
-        : `${label} 전체 분석 완료 (점수 순)${_dateNote}`;
+        : `${label} 전체 분석 완료 (백테스트 유효 우선 · 점수 순)${_dateNote}`;
     }
     // 코스닥 경고 표시/숨김 (백테스트 근거)
     const kosdaqWarnEl = document.getElementById("kosdaqWarn");
@@ -247,49 +255,35 @@ async function _analyzeOne(ticker, name) {
 }
 
 // ── FIS 분석 ─────────────────────────────────────────────
-// Python _analyze_one 동일:
-//   df → calc_indicators → calc_fis → make_judgment → calc_entry_score
-//   필터: fis>=30, entry_score>=55, risk>-16, trend>0
-//   risk는 df_fis["RiskPenalty"] 즉 마지막 봉의 RiskPenalty 값
-//   trend는 df_fis["TrendScore"] 즉 마지막 봉의 TrendScore 값
+// 기계적 진입 조건 (indicators.js MECH 기준 — 백테스트 시뮬과 100% 동일):
+//   ① FIS ≥ 60  ② EMA20 이격 ≥ 0.3 ATR  ③ RSI 눌림(8봉 내 ≤62) 후 회복(현재 ≥50)
+//   ④ 추세 신선도 1~35봉  ⑤ 통합 진입점수 ≥ 65  ⑥ R:R ≥ 1.5
 function _analyzeFis(ticker, name, bars) {
   const df = calcIndicators(bars);
   if (!df || df.length < 30) return null;
   const fisBars = calcFIS(df);
   if (!fisBars || fisBars.length === 0) return null;
+
+  const lastIdx = fisBars.length - 1;
+  const last    = fisBars[lastIdx];
+
+  // cheap 필터 먼저 (FIS·이격·RSI눌림·신선도) — calcEntryScore 이전에 탈락 처리
+  const cheap = mechCheapFilterAt(fisBars, lastIdx);
+  if (!cheap.pass) return null;
+
   const judgment = makeJudgment(fisBars);
   if (!judgment) return null;
 
-  const last = fisBars[fisBars.length - 1];
-
-  // Python: float(last["TrendScore"]), float(last["RiskPenalty"]) 등
-  // calcFIS가 각 봉에 TrendScore, MomentumScore, StructureScore,
-  // CompressionScore, VolumeScore, RiskPenalty 컬럼을 부여한다고 가정
   const trend       = last.TrendScore       ?? 0;
   const momentum    = last.MomentumScore    ?? 0;
   const structure   = last.StructureScore   ?? 0;
   const compression = last.CompressionScore ?? 0;
   const volume      = last.VolumeScore      ?? 0;
   const risk        = last.RiskPenalty      ?? 0;   // 감점값 (음수)
-
-  const fis = judgment.fis ?? 0;
-
-  // 기계적 진입 조건 1: FIS >= 65 (max raw~99 기준 강한 추세)
-  if (fis < 60) return null;
-
-  // cheap 필터 먼저: calcEntryScore 이전
-  const close_v  = last.close  ?? last.Close  ?? 0;
-  const ema20_v  = last.EMA20  ?? close_v;
-  const atr_v    = last.ATR14  ?? 0;
-  const gap_atr_v = atr_v > 0 ? (close_v - ema20_v) / atr_v : 0;
-  // gap_atr<0.3: EMA20 바로 위라 손절 여유 없음
-  if (gap_atr_v < 0.3) return null;
-
-  // RSI 눌림 체크: 최근 8봉 내 RSI<=62 구간 존재 + 현재 RSI >= 50
-  const rsiHistory = fisBars.slice(-9, -1).map(b => b.RSI14 ?? 0).filter(r => r > 0);
-  const hadPullback = rsiHistory.some(r => r <= 62);
-  const rsi_now = last.RSI14 ?? 0;
-  if (!hadPullback || rsi_now < 50) return null;
+  const fis         = judgment.fis ?? 0;
+  const close_v     = last.close ?? 0;
+  const ema20_v     = last.EMA20 ?? close_v;
+  const atr_v       = last.ATR14 ?? 0;
 
   // 섹터 context
   const _scanSectorName = (typeof STOCK_SECTOR_MAP !== "undefined") ? STOCK_SECTOR_MAP[ticker] : null;
@@ -299,24 +293,19 @@ function _analyzeFis(ticker, name, bars) {
   const entryData = calcEntryScore(fisBars, _scanContext);
   if (!entryData) return null;
   const entry = entryData.score ?? 0;
+  if (entry < MECH.ENTRY_MIN) return null;
 
-  // 기계적 진입 조건: 통합 진입 점수 >= 65
-  if (entry < 65) return null;
+  // 매매 계획: 손절 EMA20−ATR / TP1 +ATR×2 / TP2 +ATR×3 (현재 종가 기준)
+  const plan = mechTradePlan(fisBars, lastIdx, close_v);
+  if (!plan || plan.rr < MECH.RR_MIN) return null;
+  const rr_val = Math.round(plan.rr * 100) / 100;
 
-  const biu = entryData.metrics?.freshness_bars ?? 0;
-
+  const biu = entryData.metrics?.freshness_bars ?? cheap.freshBars;
   const high20_v = fisBars.slice(-20).reduce((m, b) =>
-    Math.max(m, b.high ?? b.High ?? 0), -Infinity);
+    Math.max(m, b.high ?? 0), -Infinity);
   const ema20_gap = ema20_v > 0
     ? Math.round(((close_v - ema20_v) / ema20_v * 100) * 10) / 10
     : 0;
-
-  const _ema_stop = ema20_v - atr_v;
-  const _rr_risk  = close_v - _ema_stop;  // = (close-EMA20)+ATR >= ATR
-  const rr_val    = (_rr_risk > 0 && atr_v > 0)
-    ? Math.round((atr_v * 3) / _rr_risk * 100) / 100
-    : 0;
-  if (rr_val < 1.5) return null;
 
   const entry_components   = entryData.components    || {};
   const entry_setup_scores = entryData.setup_scores  || {};
@@ -326,7 +315,8 @@ function _analyzeFis(ticker, name, bars) {
 
   // fisBars 캐싱 (백테스트 버튼 클릭 시 재활용)
   _btFisBarsCache[ticker] = fisBars;
-  const btSim = _runBtSim(fisBars);  // 카드 렌더링 시 즉시 강조용
+  // 종목별 과거 백테스트 (실전 조건·거래비용 동일 적용) — 카드 즉시 강조용
+  const btSim = runMechBacktest(fisBars, { costPct: _mechCostPct() });
 
   return {
     ticker,
@@ -344,6 +334,10 @@ function _analyzeFis(ticker, name, bars) {
     entry_score:  Math.round(entry),
     rr:           rr_val,
     freshness_bars: biu,
+    // 매매 계획 가격 (카드에 표시 — 주문 즉시 입력 가능)
+    plan_stop:    plan.stop,
+    plan_tp1:     plan.tp1,
+    plan_tp2:     plan.tp2,
     entry_setup_name,
     entry_setup_name2,
     entry_components,
@@ -358,6 +352,7 @@ function _analyzeFis(ticker, name, bars) {
     btPF:         btSim?.mech?.pf ?? null,
     btWinRate:    btSim?.mech?.winRate ?? null,
     btTotal:      btSim?.mech?.total ?? 0,
+    btExpectancy: btSim?.mech?.expectancy ?? null,
   };
 }
 
@@ -559,9 +554,10 @@ function renderFisCard(c, idx) {
   const tCls   = c.trend >= 10 ? "pos" : "neg";
   const mCls   = c.momentum >= 5 ? "pos" : c.momentum < 0 ? "neg" : "";
   const pf     = _market === "us" ? "" : "₩";
+  const dec    = _market === "us" ? 2 : 0;
 
   const btDiag   = c.btDiag ?? "";
-  // bt ?? ?? ???: ?? ?? ?? ?? ?? ?? + ????
+  // 백테스트 진단별 카드 강조 (좌측 컬러바)
   const cardStyle = btDiag === "bt-ok"
     ? 'style="border-left:3px solid #2ea043;box-shadow:inset 3px 0 0 rgba(46,160,67,0.15);position:relative"'
     : btDiag === "bt-bad"
@@ -569,6 +565,28 @@ function renderFisCard(c, idx) {
     : btDiag === "bt-warn"
     ? 'style="border-left:3px solid #d29922;box-shadow:inset 3px 0 0 rgba(210,153,34,0.12);position:relative"'
     : "";
+
+  // ── 매매 계획 (즉시 주문 입력 가능한 가격) ──
+  const _pl = (v) => pf + fmt(_market === "us" ? v : Math.round(v), dec);
+  const _pct = (v) => (v >= c.close ? "+" : "") + ((v - c.close) / c.close * 100).toFixed(1) + "%";
+  const planHTML = (c.plan_stop > 0 && c.plan_tp1 > 0) ? `
+    <div class="cc-plan">
+      <div class="cc-plan-title">⚡ 매매 계획 <span class="cc-plan-sub">(종가 ${_pl(c.close)} 진입 기준)</span></div>
+      <div class="cc-plan-grid">
+        <div class="cc-plan-cell stop"><span class="cc-plan-k">손절</span><b>${_pl(c.plan_stop)}</b><span class="cc-plan-p">${_pct(c.plan_stop)}</span></div>
+        <div class="cc-plan-cell tp1"><span class="cc-plan-k">1차 익절 50%</span><b>${_pl(c.plan_tp1)}</b><span class="cc-plan-p">${_pct(c.plan_tp1)}</span></div>
+        <div class="cc-plan-cell tp2"><span class="cc-plan-k">2차 익절</span><b>${_pl(c.plan_tp2)}</b><span class="cc-plan-p">${_pct(c.plan_tp2)}</span></div>
+      </div>
+      <div class="cc-plan-note">1차 도달 시 손절선을 진입가로 올림 · 25봉(약 5주) 내 미도달 시 전량 청산</div>
+    </div>` : "";
+
+  // ── 종목별 백테스트 요약 칩 ──
+  const btChip = (c.btTotal >= 5 && c.btPF != null)
+    ? `<span class="cs-chip" style="background:rgba(46,160,67,0.10)" title="이 종목 과거 동일조건 백테스트">과거 ${c.btTotal}회 · 승률 ${(c.btWinRate*100).toFixed(0)}% · PF ${c.btPF === Infinity ? "∞" : c.btPF.toFixed(1)}</span>`
+    : c.btTotal > 0
+    ? `<span class="cs-chip" title="신호 5건 미만 — 통계 신뢰 낮음">과거 신호 ${c.btTotal}회 (표본 부족)</span>`
+    : `<span class="cs-chip" title="과거 2년간 동일조건 신호 없음">첫 신호 (과거 사례 없음)</span>`;
+
   return `
   <div class="candidate-card" ${cardStyle}>
     <div class="cc-top">
@@ -583,13 +601,16 @@ function renderFisCard(c, idx) {
     </div>
     <div class="cc-label" style="color:${col}">${c.label}</div>
     <div class="cc-summary">${c.summary_l1}</div>
+    ${planHTML}
     <div class="cc-scores">
       <span class="cs-chip ${tCls}" title="추세점수">추세 ${c.trend>=0?"+":""}${c.trend.toFixed(0)}</span>
       <span class="cs-chip ${mCls}" title="모멘텀">모멘텀 ${c.momentum>=0?"+":""}${c.momentum.toFixed(0)}</span>
-      <span class="cs-chip" style="background:rgba(21,101,192,0.12);color:#90caf9" title="R:R">R:R ${(c.rr??0).toFixed(1)}</span>
+      <span class="cs-chip" style="background:rgba(21,101,192,0.12)" title="골든크로스 후 경과 봉 수 (1~35봉이 신선)">신선도 ${c.freshness_bars ?? "—"}봉</span>
       <span class="cs-chip" title="일목균형표">${(c.ichimoku||"—").split("—")[0].trim()}</span>
+      ${btChip}
     </div>
     ${btDiag === "bt-ok" ? '<div class="bt-ok-badge">✓ 백테스트 유효</div>' : ""}
+    ${btDiag === "bt-bad" ? '<div class="bt-ok-badge" style="background:rgba(229,57,53,0.12);color:#e53935;border-color:rgba(229,57,53,0.4)">⚠ 이 종목 과거 성과 부진 — 진입 주의</div>' : ""}
     <div class="cc-actions">
       <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">📈 차트 분석</button>
       <button class="cc-btn cc-btn-bt" id="bt-btn-${idx}" onclick="_showScanBt('${c.ticker}',${idx})">📊 백테스트</button>
@@ -659,7 +680,7 @@ function entryDetailHTML(c) {
   const rows = [
     { label: "① 추세문맥",                                           v: ctx,      max: 30, desc: ctxDesc },
     { label: `② 진입구조 — ${sName}${sName2 ? ` + ${sName2}` : ""}`, v: setup,    max: 30, desc: setupDescs[sName] || "—", extra: setupChips },
-    { label: "③ 확인신호",                                           v: trigger,  max: 24, desc: trigDesc },
+    { label: "③ 확인신호",                                           v: trigger,  max: 28, desc: trigDesc },
     { label: "④ 저항여유",                                           v: space,    max: 18, desc: spaceDesc },
     { label: "⑤ 리스크관리",                                         v: riskCtrl, max: 16, desc: riskDesc },
   ];
@@ -728,128 +749,8 @@ function renderKumoCard(c) {
     </div>
   </div>`;
 }
-// \u2500\u2500 \ubc31\ud14c\uc2a4\ud2b8 \uc2dc\ubbac \ucf54\uc5b4 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-// _analyzeFis \uc2a4\uce94 \uc2dc + \ubc31\ud14c\uc2a4\ud2b8 \ub3d9\uc2dc \uc2e4\ud589, \uacb0\uacfc\ub294 \uce74\ub4dc\uc5d0 \uc989\uc2dc \ubc18\uc601
-function _runBtSim(fisBars) {
-  if (!fisBars || typeof calcEntryScore !== "function") return null;
-  const n = fisBars.length;
-  if (n < 100) return null;
-  const MIN_LB = 80;
-
-  // \u2500\u2500 1. FIS \uc9c4\uc785\uc810\uc218 \ubc84\ud134 \ubd84\uc11d (\ubd84\uc11d\ud398\uc774\uc9c0 runBacktest \ub3d9\uc77c \ub85c\uc9c1) \u2500\u2500
-  const fisKeys = ["90+", "80-90", "65-80", "50-65"];
-  const buckets = {};
-  for (const k of fisKeys) buckets[k] = { counts:{1:0,3:0,5:0,mfe:0}, wins:{1:0,3:0,5:0,mfe:0} };
-
-  // \u2500\u2500 2. \uae30\uacc4\uc801 \uc804\ub7b5 \uc2dc\ubbac (50/50 \ubd80\ubd84 \uc775\uc808 \ubaa8\ub378) \u2500\u2500
-  const mechTrades = [];
-
-  for (let i = MIN_LB; i < n - 5; i++) {
-    const slice     = fisBars.slice(0, i + 1);
-    const entryData = calcEntryScore(slice);
-    const score     = entryData?.score ?? 0;
-    if (score < 0) continue;
-
-    const curClose = fisBars[i].close ?? fisBars[i].Close ?? 0;
-    if (curClose > 0) {
-      const key = score >= 90 ? "90+" : score >= 80 ? "80-90" : score >= 65 ? "65-80" : score >= 50 ? "50-65" : null;
-      if (key) {
-        for (const p of [1, 3, 5]) {
-          if (i + p >= n) continue;
-          const fwdClose = fisBars[i + p]?.close ?? fisBars[i + p]?.Close ?? 0;
-          if (fwdClose) { buckets[key].counts[p]++; if (fwdClose > curClose) buckets[key].wins[p]++; }
-        }
-        const endIdx = Math.min(i + 5, n - 1);
-        let hadMFE = false;
-        for (let j = i + 1; j <= endIdx; j++) {
-          if ((fisBars[j]?.high ?? fisBars[j]?.High ?? 0) > curClose * 1.02) { hadMFE = true; break; }
-        }
-        buckets[key].counts.mfe++;
-        if (hadMFE) buckets[key].wins.mfe++;
-      }
-    }
-
-    // \uae30\uacc4\uc801 \uc804\ub7b5: FIS\u226560 AND \uc9c4\uc785\uc810\uc218\u226565 AND R:R\u22651.5
-    if (score >= 65 && (fisBars[i].FIS ?? 0) >= 60 && i + 1 < n && i <= n - 26) {
-      const atr   = fisBars[i].ATR14 ?? 0;
-      const ema20 = fisBars[i].EMA20 ?? 0;
-      if (atr > 0 && ema20 > 0) {
-        const stopPrice  = ema20 - atr;
-        const nextBar    = fisBars[i + 1];
-        const entryPrice = nextBar ? (nextBar.open ?? nextBar.close ?? 0) : 0;
-        const rr_risk    = entryPrice - stopPrice;
-        if (entryPrice > 0 && stopPrice > 0 && stopPrice < entryPrice && (atr * 3) / rr_risk >= 1.5) {
-          const tp1Price = entryPrice + atr * 2;   // 1\ucc28 \uc775\uc808: ATR\u00d72 (50% \uccad\uc0b0)
-          const tp2Price = entryPrice + atr * 3;   // 2\ucc28 \uc775\uc808: ATR\u00d73 (\uc794\uc5ec 50%)
-          let exitPrice  = fisBars[Math.min(i + 25, n - 1)]?.close ?? entryPrice;
-          let exitType   = "\uae30\uac04\ub9cc\ub8cc";
-          let tp1Hit     = false;
-          let tp1Bar     = null;
-          for (let j = i + 1; j <= Math.min(i + 25, n - 1); j++) {
-            const bj       = fisBars[j];
-            if (!bj) continue;
-            const stopLine = tp1Hit ? entryPrice : stopPrice;
-            if ((bj.low ?? bj.Low ?? Infinity) <= stopLine) {
-              exitPrice = stopLine; exitType = tp1Hit ? "\ube0c\ub808\uc774\ud06c\uc774\ube10" : "\uc190\uc808"; break;
-            }
-            if (!tp1Hit && (bj.high ?? bj.High ?? 0) >= tp1Price) { tp1Hit = true; tp1Bar = j - i; }
-            if (tp1Hit  && (bj.high ?? bj.High ?? 0) >= tp2Price) { exitPrice = tp2Price; exitType = "2\ucc28\uc775\uc808"; break; }
-          }
-          if (exitType === "\uae30\uac04\ub9cc\ub8cc" && tp1Hit) exitType = "1\ucc28\uc775\uc808";
-          const pnlPct = tp1Hit
-            ? 0.5 * (tp1Price - entryPrice) / entryPrice * 100
-              + 0.5 * (exitPrice - entryPrice) / entryPrice * 100
-            : (exitPrice - entryPrice) / entryPrice * 100;
-          mechTrades.push({ pnlPct, exitType, tp1Bar });
-        }
-      }
-    }
-  }
-
-  // \u2500\u2500 \uae30\uacc4\uc801 \uc804\ub7b5 \ud1b5\uacc4 \u2500\u2500
-  const mt       = mechTrades;
-  const mTotal   = mt.length;
-  const wins2nd  = mt.filter(t => t.exitType === "2\ucc28\uc775\uc808");
-  const wins1st  = mt.filter(t => t.exitType === "1\ucc28\uc775\uc808");
-  const bes      = mt.filter(t => t.exitType === "\ube0c\ub808\uc774\ud06c\uc774\ube10");
-  const losses   = mt.filter(t => t.exitType === "\uc190\uc808");
-  const timeouts = mt.filter(t => t.exitType === "\uae30\uac04\ub9cc\ub8cc");
-  const mWins    = [...wins2nd, ...wins1st, ...bes];
-  const mWinRate = mTotal > 0 ? mWins.length / mTotal : 0;
-  const totalProfit = mWins.reduce((s, t) => s + t.pnlPct, 0);
-  const totalLoss   = Math.abs(losses.reduce((s, t) => s + t.pnlPct, 0));
-  const pf          = totalLoss > 0 ? totalProfit / totalLoss : (totalProfit > 0 ? Infinity : 0);
-  const expectancy  = mTotal > 0 ? mt.reduce((s, t) => s + t.pnlPct, 0) / mTotal : 0;
-  const avgWin      = mWins.length   ? mWins.reduce((s,t)=>s+t.pnlPct,0)/mWins.length   : 0;
-  const avgLoss     = losses.length  ? losses.reduce((s,t)=>s+t.pnlPct,0)/losses.length  : 0;
-  const tp1Reached    = mt.filter(t => t.tp1Bar !== null);
-  const tp1BarsSorted = tp1Reached.map(t => t.tp1Bar).sort((a, b) => a - b);
-  const avgTp1Bar     = tp1Reached.length
-    ? tp1Reached.reduce((s, t) => s + t.tp1Bar, 0) / tp1Reached.length
-    : null;
-  const medTp1Bar     = tp1Reached.length
-    ? (tp1BarsSorted.length % 2 === 0
-        ? (tp1BarsSorted[tp1BarsSorted.length/2 - 1] + tp1BarsSorted[tp1BarsSorted.length/2]) / 2
-        : tp1BarsSorted[Math.floor(tp1BarsSorted.length / 2)])
-    : null;
-
-  let mechDiag;
-  if (mTotal < 5)                           mechDiag = "bt-neutral";
-  else if (pf >= 1.5 && mWinRate >= 0.45)  mechDiag = "bt-ok";
-  else if (pf >= 1.0 && expectancy > 0)    mechDiag = "bt-neutral";
-  else                                      mechDiag = "bt-warn";
-
-  const diag = mechDiag === "bt-ok" ? "bt-ok" : mechDiag === "bt-warn" ? "bt-bad" : "bt-warn";
-
-  return {
-    buckets,
-    mech: { total: mTotal, wins2nd: wins2nd.length, wins1st: wins1st.length,
-            bes: bes.length, losses: losses.length, timeouts: timeouts.length,
-            winRate: mWinRate, pf, expectancy, avgWin, avgLoss, avgTp1Bar, medTp1Bar, tp1ReachedN: tp1Reached.length, diag: mechDiag },
-    diag,
-  };
-}
-
+// \u2500\u2500 \ubc31\ud14c\uc2a4\ud2b8 \ud328\ub110 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// \uc2dc\ubbac \ucf54\uc5b4\ub294 indicators.js::runMechBacktest (\uc2a4\uce94 \uc2e4\uc804 \uc870\uac74\uacfc \ub3d9\uc77c)
 function _showScanBt(ticker, idx) {
   const panel = document.getElementById("bt-panel-" + idx);
   const btn   = document.getElementById("bt-btn-" + idx);
@@ -868,18 +769,18 @@ function _showScanBt(ticker, idx) {
 
   setTimeout(() => {
     const fisBars = _btFisBarsCache[ticker];
-    if (!fisBars || typeof calcEntryScore !== "function") {
-      panel.innerHTML = "<div class='scan-bt-empty'>\uB370\uC774\uD130 \uC5C6\uC74C</div>";
+    if (!fisBars || typeof runMechBacktest !== "function") {
+      panel.innerHTML = "<div class='scan-bt-empty'>\ub370\uc774\ud130 \uc5c6\uc74c</div>";
       btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    const sim = _runBtSim(fisBars);
+    const sim = runMechBacktest(fisBars, { costPct: _mechCostPct() });
     if (!sim) {
       panel.innerHTML = "<div class='scan-bt-empty'>\uc2e0\ud638 \uc5c6\uc74c (\ub370\uc774\ud130 \ubd80\uc871)</div>";
       btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    const { buckets, mech, diag } = sim;
+    const { buckets, mech, diag, costPct } = sim;
 
     // \u2500\u2500 \uc139\uc158 1: \uc9c4\uc785\uc810\uc218 \ubc31\ud14c\uc2a4\ud2b8 (\uad6c\uac04\ubcc4 \uc2b9\ub960 \ubc0f MFE) \u2500\u2500
     const fisKeys  = ["90+", "80-90", "65-80", "50-65"];
@@ -920,7 +821,7 @@ function _showScanBt(ticker, idx) {
 
     let verdict, verdictClass;
     if (mN < 5) {
-      verdict = `\u26a0 \uc2e0\ud638 ${mN}\uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4 \uc2e0\ub8b0 \ub099\uc74c`; verdictClass = "bt-neutral";
+      verdict = `\u26a0 \uc2e0\ud638 ${mN}\uac74 \u2014 5\uac74 \ubbf8\ub9cc, \ud1b5\uacc4 \uc2e0\ub8b0 \ub0ae\uc74c`; verdictClass = "bt-neutral";
     } else if (mechDiag === "bt-ok") {
       verdict = `\u2713 \uc190\uc775\ube44\u00b7\uc2b9\ub960 \uc591\ud638 \u2014 \uae30\uacc4\uc801 \uc804\ub7b5 \uc801\uc6a9 \uac00\ub2a5`; verdictClass = "bt-ok";
     } else if (mechDiag === "bt-neutral") {
@@ -929,8 +830,8 @@ function _showScanBt(ticker, idx) {
       verdict = `\u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9 \uae30\uacc4\uc801 \uc804\ub7b5 \ubd80\uc801\ud569`; verdictClass = "bt-warn";
     }
 
-    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">⚡ 기계적 전략 시뮬 (FIS≥60 · 진입점수≥65 · R:R≥1.5)</div>`;
-    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">손절=EMA20−ATR · 1차(ATR×2): 50%+손절↑진입가 · 2차(ATR×3): 잔여 50% · 25봉 기간제</div>`;
+    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">⚡ 기계적 전략 시뮬 — 스캔과 동일 조건 (FIS·이격·RSI눌림·신선도·점수·R:R)</div>`;
+    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">다음봉 시가 진입 · 손절=EMA20−ATR · 1차(ATR×2): 50%+손절↑진입가 · 2차(ATR×3): 잔여 50% · 25봉 기간제 · 중복 포지션 없음</div>`;
     if (mN === 0) {
       h += `<div class="scan-bt-empty">과거 신호 없음</div>`;
     } else {
@@ -940,7 +841,7 @@ function _showScanBt(ticker, idx) {
           <div style="font-size:11px;font-weight:700">${mN}건 | ${wins2nd} / ${wins1st} / ${bes} / ${losses} / ${timeouts}</div>
         </div>
         <div style="border:1px solid var(--border);padding:6px 8px">
-          <div style="font-size:10px;color:var(--text3)">승률 (TP1 도달 기준)</div>
+          <div style="font-size:10px;color:var(--text3)">승률 (비용 차감 후 순수익 기준)</div>
           <div style="font-size:14px;font-weight:800;color:${wrCol}">${(winRate*100).toFixed(0)}%</div>
         </div>
         <div style="border:1px solid var(--border);padding:6px 8px">
@@ -956,7 +857,7 @@ function _showScanBt(ticker, idx) {
       if (avgTp1Bar !== null) {
         h += `<div style="font-size:11px;color:var(--text3);margin-top:5px">1차 익절 평균 도달: <b style="color:#56a0d3">${avgTp1Bar.toFixed(1)}봉</b> · 중위수: <b style="color:#56a0d3">${medTp1Bar.toFixed(1)}봉</b> <span style="color:#666">(TP1 도달 ${tp1ReachedN}건 기준)</span></div>`;
       }
-      h += `<div style="font-size:10px;color:#888;margin-top:4px">※ 거래비용·슬리피지 미포함. 과거 성과가 미래를 보장하지 않음</div>`;
+      h += `<div style="font-size:10px;color:#888;margin-top:4px">※ 왕복 거래비용 ${costPct.toFixed(2)}% 차감 반영. 과거 성과가 미래를 보장하지 않음</div>`;
     }
 
     panel.innerHTML = h;

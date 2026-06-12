@@ -129,8 +129,18 @@
           </div>
           <div class="mech-row">
             <span class="mch-icon" id="mch-fresh-icon">☐</span>
-            <span class="mch-label">추세신선도 ≥ 0pt</span>
+            <span class="mch-label">추세 신선도 1~35봉</span>
             <span class="mch-val" id="mch-fresh-val">—</span>
+          </div>
+          <div class="mech-row">
+            <span class="mch-icon" id="mch-gap-icon">☐</span>
+            <span class="mch-label">EMA20 이격 ≥ 0.3 ATR</span>
+            <span class="mch-val" id="mch-gap-val">—</span>
+          </div>
+          <div class="mech-row">
+            <span class="mch-icon" id="mch-pull-icon">☐</span>
+            <span class="mch-label">RSI 눌림 후 회복 (≥50)</span>
+            <span class="mch-val" id="mch-pull-val">—</span>
           </div>
           <div class="mech-row">
             <span class="mch-icon" id="mch-rr-icon">☐</span>
@@ -165,7 +175,10 @@
             <input type="number" id="avgCostInput" class="avg-cost-input"
                    placeholder="예: 85000" min="0" step="1"
                    oninput="onAvgCostChange()">
+            <button type="button" class="avg-cost-fill" onclick="fillCurrentPrice()"
+                    title="현재 종가를 평단가로 입력 (신규 진입 기준)">현재가</button>
           </div>
+          <div class="avg-cost-hint">신규 진입 검토 시 현재가 기준으로 자동 계산됩니다. 보유 중이면 본인 평단가로 수정하세요.</div>
           <div class="stop-loss-result">
             <!-- ── R:R 계산 기준 (기계적 스캔과 동일) ── -->
             <div class="sl-rr-basis-box">
