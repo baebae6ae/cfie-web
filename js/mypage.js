@@ -61,11 +61,11 @@ async function loadMyPage() {
       const dPct  = q.changePct || 0;
       const dSign = dPct >= 0 ? "+" : "";
 
-      // ── 매매 신호: 손절 EMA20−ATR / TP1 평단가+ATR×2 / TP2 평단가+ATR×3 ──
+      // ── 매매 신호: 손절 EMA20−1.5ATR / TP1 평단가+ATR×2 / TP2 평단가+ATR×3 ──
       const tech = techMap[p.ticker];
       let sigHTML = `<span style="color:var(--text3,#999);font-size:11px">지표 없음</span>`;
       if (tech && tech.atr > 0 && tech.ema20 > 0 && p.cost > 0) {
-        const stop = tech.ema20 - tech.atr;
+        const stop = tech.ema20 - tech.atr * (typeof MECH !== "undefined" ? MECH.STOP_ATR_MULT : 1.5);
         const tp1  = p.cost + tech.atr * 2;
         const tp2  = p.cost + tech.atr * 3;
         let badge, sub;

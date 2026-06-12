@@ -20,7 +20,20 @@ let _currentGapAtr      = 0;
 let _currentHadPullback = false;
 let _currentRsiNow      = 0;
 let _currentFreshBars   = 0;
+let _currentTurnover    = 0;
+let _currentTurnoverOk  = false;
+let _currentRegime      = null;   // buildRegime 결과 (시장 레짐 게이트)
+let _currentMarket      = "kospi";
 let _chartPrefsFromUrlApplied = false;
+
+function _tickerMarket(t) {
+  if (/\.KS$/i.test(t)) return "kospi";
+  if (/\.KQ$/i.test(t)) return "kosdaq";
+  return "us";
+}
+function _marketMinTurnover(mkt) {
+  return mkt === "us" ? MECH.MIN_TURNOVER_USD : MECH.MIN_TURNOVER_KRW;
+}
 
 // ── 초기화 ──────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -66,14 +79,20 @@ async function loadChart(ticker) {
     const _groupReps  = (_gn && typeof GROUP_REP_STOCKS  !== "undefined")
       ? (GROUP_REP_STOCKS[_gn] || []).filter(t => t !== _currentTicker).slice(0, 2) : [];
 
-    // 메인 + 섹터 ETF + 그룹 대표주 병렬 fetch
+    // 시장 레짐용 지수 티커 (마켓별)
+    _currentMarket = _tickerMarket(_currentTicker);
+    const _regimeIdx = MECH.REGIME_INDEX[_currentMarket];
+
+    // 메인 + 섹터 ETF + 그룹 대표주 + 시장 지수 병렬 fetch
     const _allFetches = [
       fetchOHLCV(_currentTicker, period, tf),
       _sectorEtf ? fetchOHLCV(_sectorEtf, "6mo", "1d").catch(() => null) : Promise.resolve(null),
+      _regimeIdx ? fetchOHLCV(_regimeIdx, "2y", "1d").catch(() => null) : Promise.resolve(null),
       ..._groupReps.map(t => fetchOHLCV(t, "6mo", "1d").catch(() => null)),
     ];
-    const [_mainRes, _sectorRes, ..._groupRes] = await Promise.all(_allFetches);
+    const [_mainRes, _sectorRes, _idxRes, ..._groupRes] = await Promise.all(_allFetches);
     const { bars, meta } = _mainRes;
+    _currentRegime = _idxRes?.bars?.length ? buildRegime(_idxRes.bars) : null;
 
     // 섹터·그룹 FIS 계산
     const _entryContext = { sectorName: _sn, groupName: _gn };
@@ -109,12 +128,15 @@ async function loadChart(ticker) {
     _currentClose     = _sl?.close  || 0;
     _currentIsKRW     = (meta?.currency || "") !== "USD";
 
-    // 기계적 진입 cheap 조건 (스캔과 동일 — EMA20 이격 / RSI 눌림·회복 / 신선도)
-    const _cheap = mechCheapFilterAt(fisBars, fisBars.length - 1);
+    // 기계적 진입 cheap 조건 (스캔과 동일 — EMA20 이격 / RSI 눌림·회복 / 신선도 / 유동성)
+    const _cheap = mechCheapFilterAt(fisBars, fisBars.length - 1,
+      { minTurnover: _marketMinTurnover(_currentMarket) });
     _currentGapAtr      = _cheap.gapAtr;
     _currentHadPullback = _cheap.hadPullback;
     _currentRsiNow      = _cheap.rsiNow;
     _currentFreshBars   = _cheap.freshBars;
+    _currentTurnover    = _cheap.turnover;
+    _currentTurnoverOk  = _cheap.turnoverOk;
 
     // 평단가 미입력 시 현재 종가로 자동 채움 → 손절/익절/R:R 즉시 표시
     const _avgInp = document.getElementById("avgCostInput");
@@ -241,8 +263,9 @@ function onAvgCostChange() {
       tp2PctEl.style.color = "var(--bull,#2ea043)";
     } else tp2PctEl.textContent = "";
   }
-  // 손익비(R:R) = 기계적 스캔과 동일 공식: ATR×3 목표 / (현재가 − EMA20−ATR) 손절
-  const _ema20Stop = (_currentEMA20 > 0 && _currentATR > 0) ? _currentEMA20 - _currentATR : 0;
+  // 손익비(R:R) = 기계적 스캔과 동일 공식: ATR×3 목표 / (평단가 − (EMA20−1.5ATR)) 손절
+  const _ema20Stop = (_currentEMA20 > 0 && _currentATR > 0)
+    ? _currentEMA20 - _currentATR * MECH.STOP_ATR_MULT : 0;
   const _rrRisk   = avgCost > 0 && _ema20Stop > 0 && avgCost > _ema20Stop ? avgCost - _ema20Stop : 0;
   const _rrReward = _currentATR > 0 ? _currentATR * 3 : 0;
   const rr = _rrRisk > 0 && _rrReward > 0 ? _rrReward / _rrRisk : 0;
@@ -277,8 +300,8 @@ function onAvgCostChange() {
   if (rrEl)    rrEl.textContent = rr > 0 ? rr.toFixed(2) + " : 1" : "—";
   if (rrSigEl) {
     if (rr > 0) {
-      rrSigEl.textContent = rr >= 2.0 ? "✓ 양호" : rr >= 1.5 ? "△ 보통" : "⚠ 불리";
-      rrSigEl.style.color = rr >= 2.0 ? "var(--bull,#2ea043)" : rr >= 1.5 ? "#d29922" : "var(--bear,#e53935)";
+      rrSigEl.textContent = rr >= 1.4 ? "✓ 양호" : rr >= MECH.RR_MIN ? "△ 보통" : "⚠ 불리";
+      rrSigEl.style.color = rr >= 1.4 ? "var(--bull,#2ea043)" : rr >= MECH.RR_MIN ? "#d29922" : "var(--bear,#e53935)";
     } else rrSigEl.textContent = "";
   }
   _currentRR = rr;
@@ -291,7 +314,7 @@ function onAvgCostChange() {
     } else { beNote.style.display = "none"; }
   }
   const rrRowEl = document.getElementById("rrRow");
-  if (rrRowEl) rrRowEl.classList.toggle("rr-warn", rr > 0 && rr < 2.0);
+  if (rrRowEl) rrRowEl.classList.toggle("rr-warn", rr > 0 && rr < MECH.RR_MIN);
 
   // 포지션 사이징 업데이트 (avgCost·ema20Stop 기반)
   _updateSizing(avgCost, _ema20Stop);
@@ -359,7 +382,8 @@ function _calcSizing(avgCost, stopPct) {
 function onSizingChange() {
   const inp = document.getElementById("avgCostInput");
   const avgCost = parseFloat(inp?.value) || 0;
-  const ema20Stop = (_currentEMA20 > 0 && _currentATR > 0) ? _currentEMA20 - _currentATR : 0;
+  const ema20Stop = (_currentEMA20 > 0 && _currentATR > 0)
+    ? _currentEMA20 - _currentATR * MECH.STOP_ATR_MULT : 0;
   const stopPct = avgCost > 0 && ema20Stop > 0 && avgCost > ema20Stop
     ? Math.abs((ema20Stop - avgCost) / avgCost) : 0;
   _calcSizing(avgCost, stopPct);
@@ -389,6 +413,8 @@ function renderChecklist() {
   const freshPass = _currentFreshBars >= 1 && _currentFreshBars <= MECH.FRESH_MAX_BARS;
   const gapPass   = _currentGapAtr >= MECH.GAP_ATR_MIN;
   const pullPass  = _currentHadPullback && _currentRsiNow >= MECH.RSI_RECOVER_MIN;
+  const regimePass= _currentRegime ? _currentRegime.ok : true;   // 지수 데이터 없으면 게이트 미적용
+  const liqPass   = _currentTurnoverOk;
   const rrEntered = _currentRR > 0;
   const rrPass    = _currentRR >= MECH.RR_MIN;
 
@@ -413,6 +439,18 @@ function renderChecklist() {
     : `RSI ${_currentRsiNow.toFixed(0)} 미회복`;
   _upd("mch-pull-icon","mch-pull-val", pullPass, loaded ? pullStr : "—");
 
+  // 시장 레짐 (지수 > EMA60)
+  const regimeStr = !_currentRegime ? "지수 데이터 없음"
+    : _currentRegime.ok ? `ON (${_currentRegime.lastDate})` : `OFF — 약세 국면`;
+  _upd("mch-regime-icon","mch-regime-val", regimePass, loaded ? regimeStr : "—");
+
+  // 유동성 (20봉 평균 거래대금)
+  const isUSD = _currentMarket === "us";
+  const liqStr = _currentTurnover > 0
+    ? (isUSD ? "$" + (_currentTurnover / 1e6).toFixed(1) + "M" : (_currentTurnover / 1e8).toFixed(0) + "억원")
+    : "—";
+  _upd("mch-liq-icon","mch-liq-val", liqPass, loaded ? liqStr : "—");
+
   if (!rrEntered) {
     const ic2 = document.getElementById("mch-rr-icon");
     const vl2 = document.getElementById("mch-rr-val");
@@ -425,27 +463,29 @@ function renderChecklist() {
   const vEl = document.getElementById("mechVerdict");
   if (!vEl) return;
   if (!loaded) { vEl.textContent = "차트 로드 후 계산"; vEl.className = "mech-verdict mech-wait"; return; }
-  const basePass = scorePass && fisPass && freshPass && gapPass && pullPass;
+  const basePass = scorePass && fisPass && freshPass && gapPass && pullPass && regimePass && liqPass;
   if (!basePass) {
     const failed = [
+      !regimePass&& "시장레짐 OFF",
       !scorePass && "진입점수(65미만)",
       !fisPass   && "FIS(60미만)",
       !freshPass && "추세신선도",
       !gapPass   && "EMA20이격",
       !pullPass  && "RSI눌림",
+      !liqPass   && "유동성 부족",
     ].filter(Boolean);
     vEl.textContent = "⛔ "+failed.join("·")+" — 관망";
     vEl.className = "mech-verdict mech-no";
   } else if (!rrEntered) {
     const optNote = (scoreOpt && fisOpt) ? " (최적 구간 ★)" : "";
-    vEl.textContent = "⚡ 기본 5조건 충족"+optNote+" — 평단가 입력 후 R:R 확인";
+    vEl.textContent = "⚡ 기본 7조건 충족"+optNote+" — 평단가 입력 후 R:R 확인";
     vEl.className = "mech-verdict mech-wait";
   } else if (!rrPass) {
     vEl.textContent = "⛔ R:R "+_currentRR.toFixed(2)+" 불리 — 진입 포기";
     vEl.className = "mech-verdict mech-no";
   } else {
     const grade = (scoreOpt && fisOpt) ? "✅ 최적 조건 충족 ★ — 기계적 진입 적극 고려"
-                                       : "✅ 6조건 모두 충족 — 기계적 진입 가능";
+                                       : "✅ 전 조건 충족 — 기계적 진입 가능";
     vEl.textContent = grade;
     vEl.className = "mech-verdict mech-ok";
   }
@@ -900,7 +940,7 @@ function _buildAnalysisSummary(score, comp, m, setupName, setupName2) {
   if (score >= 80) {
     const atrNote = gapAtr > 2.5 ? `, ATR 이격(${gapAtr.toFixed(1)}) 과대한 점 감안` : "";
     const _fw = (comp['추세신선도']??0) <= -4 ? ' ⚠ 추세 후반(' + (m.freshness_bars??'?') + '봉 경과) — 기계적 백테스트 확인 필수' : '';
-    action = '→ 조건 충족' + atrNote + '. 손절(EMA20−ATR)·1차 익절(+ATR×2) 주문 설정 후 집행' + _fw;
+    action = '→ 조건 충족' + atrNote + '. 손절(EMA20−1.5ATR)·1차 익절(+ATR×2) 주문 설정 후 집행' + _fw;
   } else if (score >= 65) {
     const weak = [
       { name: "확인신호",   v: confirm,   thr: 16 },
@@ -1160,8 +1200,8 @@ function _renderMechBt(mech, costPct) {
   }
   const pfStr = pf === Infinity ? "∞" : pf.toFixed(2);
   return `<div style="margin-top:12px;border-top:1px solid var(--border2);padding-top:10px">
-    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시뮬 — 스캔과 동일 조건 (FIS·이격·RSI눌림·신선도·점수·R:R)</div>
-    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−ATR | 1차(ATR×2): 50%+손절↑진입가 | 2차(ATR×3): 잔여 50% | 25봉 기간제 | 중복 포지션 없음</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text1);margin-bottom:6px">⚡ 기계적 전략 시뮬 — 스캔과 동일 조건 (FIS·이격·RSI눌림·신선도·유동성·점수·R:R + 시장 레짐)</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">진입: 다음봉 시가 | 손절: EMA20−1.5ATR | 1차(ATR×2): 50%+손절↑진입가 | 2차(ATR×3): 잔여 50% | 25봉 기간제 | 중복 포지션 없음</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin-bottom:6px">
       <div style="border:1px solid var(--border);padding:6px 8px">
         <div style="font-size:10px;color:var(--text3)">신호 / 2차 / 1차 / BE / 손절 / 만료</div>
@@ -1197,7 +1237,11 @@ function renderBacktest(fisBars) {
   // 비동기 실행 — UI 블로킹 방지
   setTimeout(() => {
     const costPct  = _currentIsKRW ? MECH.COST_PCT_KR : MECH.COST_PCT_US;
-    const btResult = runMechBacktest(fisBars, { costPct });
+    const btResult = runMechBacktest(fisBars, {
+      costPct,
+      regimeMap: _currentRegime?.map ?? null,
+      minTurnover: _marketMinTurnover(_currentMarket),
+    });
     if (!btResult) { el.innerHTML = "<div class='bt-empty'>데이터 부족 (최소 86봉 필요)</div>"; return; }
     const { buckets, mech } = btResult;
 

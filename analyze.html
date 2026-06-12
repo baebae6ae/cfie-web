@@ -118,6 +118,11 @@
         <div class="sbox-header">⚡ 기계적 진입 체크</div>
         <div class="mech-checklist">
           <div class="mech-row">
+            <span class="mch-icon" id="mch-regime-icon">☐</span>
+            <span class="mch-label">시장 레짐 (지수&gt;EMA60)</span>
+            <span class="mch-val" id="mch-regime-val">—</span>
+          </div>
+          <div class="mech-row">
             <span class="mch-icon" id="mch-score-icon">☐</span>
             <span class="mch-label">진입점수 ≥ 65</span>
             <span class="mch-val" id="mch-score-val">—</span>
@@ -143,8 +148,13 @@
             <span class="mch-val" id="mch-pull-val">—</span>
           </div>
           <div class="mech-row">
+            <span class="mch-icon" id="mch-liq-icon">☐</span>
+            <span class="mch-label">유동성 (20일 거래대금)</span>
+            <span class="mch-val" id="mch-liq-val">—</span>
+          </div>
+          <div class="mech-row">
             <span class="mch-icon" id="mch-rr-icon">☐</span>
-            <span class="mch-label">R:R ≥ 1.5</span>
+            <span class="mch-label">R:R ≥ 1.2 (손절 1.5ATR)</span>
             <span class="mch-val" id="mch-rr-val">평단가 입력 후</span>
           </div>
           <div class="mech-verdict" id="mechVerdict">차트 로드 후 계산</div>
@@ -152,10 +162,11 @@
         <div class="mech-guide">
           <div class="mech-guide-title">📋 진입 후 행동 규칙</div>
           <div class="mech-guide-body">
-            <div class="mech-guide-row"><span class="mech-step">진입 직후</span><span>EMA20−ATR 손절 주문 설정</span></div>
+            <div class="mech-guide-row"><span class="mech-step">진입 직후</span><span>EMA20−1.5ATR 손절 주문 설정</span></div>
             <div class="mech-guide-row"><span class="mech-step">1차 익절</span><span>진입가+ATR×2 → 50% 매도 + 손절선↑진입가</span></div>
             <div class="mech-guide-row"><span class="mech-step">2차 익절</span><span>진입가+ATR×3 도달 → 나머지 50% 전량</span></div>
             <div class="mech-guide-row"><span class="mech-step">기간 손절</span><span>25봉(약 5주) 초과 시 수익 무관 전량 청산</span></div>
+            <div class="mech-guide-row"><span class="mech-step">레짐 이탈</span><span>지수가 EMA60 아래로 떨어지면 신규 진입 중단</span></div>
           </div>
         </div>
       </div>
@@ -182,9 +193,9 @@
           <div class="stop-loss-result">
             <!-- ── R:R 계산 기준 (기계적 스캔과 동일) ── -->
             <div class="sl-rr-basis-box">
-              <div class="sl-rr-basis-label">기계적 매매 기준 (EMA20−ATR / ATR×2 / ATR×3)</div>
+              <div class="sl-rr-basis-label">기계적 매매 기준 (EMA20−1.5ATR / ATR×2 / ATR×3)</div>
               <div class="sl-item sl-stop-primary">
-                <span class="sl-key sl-stop-key">🔴 손절선 (EMA20−ATR)</span>
+                <span class="sl-key sl-stop-key">🔴 손절선 (EMA20−1.5ATR)</span>
                 <span class="sl-val sl-stop-val" id="slEMA20ATR">—</span>
                 <span class="sl-pct" id="slEMA20ATRPct"></span>
               </div>

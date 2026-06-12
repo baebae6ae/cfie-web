@@ -81,6 +81,27 @@ function selectMarket(market) {
 function _mechCostPct(market = _market) {
   return market === "us" ? MECH.COST_PCT_US : MECH.COST_PCT_KR;
 }
+// 시장별 유동성 게이트 (20봉 평균 거래대금 최소)
+function _minTurnover(market = _market) {
+  return market === "us" ? MECH.MIN_TURNOVER_USD : MECH.MIN_TURNOVER_KRW;
+}
+
+// 시장 레짐 캐시 (마켓별 — 지수 종가 > EMA60 게이트)
+const _regimeCache = {};
+async function _prefetchRegime(market = _market) {
+  if (_regimeCache[market]) return _regimeCache[market];
+  try {
+    const idxTicker = MECH.REGIME_INDEX[market];
+    if (!idxTicker) return null;
+    const { bars } = await fetchOHLCV(idxTicker, "2y", "1d");
+    const regime = buildRegime(bars);
+    if (regime) _regimeCache[market] = regime;
+    return regime;
+  } catch (e) {
+    console.warn("[scan] regime fetch 실패 — 게이트 없이 진행:", e.message);
+    return null;
+  }
+}
 
 // 섹터 ETF FIS 캐시 (스캔 시작 시 1회 조회)
 const _sectorFISCache = {};
@@ -106,6 +127,23 @@ async function doScan() {
   _stopScan = false;
   _results  = [];
   _scanLastBarDate = null;
+
+  // 시장 레짐 게이트 — 지수 < EMA60 이면 기계적 진입 신호를 생성하지 않음
+  const _regime = await _prefetchRegime(_market);
+  const regimeBanner = document.getElementById("regimeBanner");
+  if (_scanType === "fis" && _regime && !_regime.ok) {
+    if (regimeBanner) {
+      regimeBanner.style.display = "block";
+      regimeBanner.innerHTML = `<b>⛔ 시장 레짐 OFF</b> — ${ {kospi:"코스피",kosdaq:"코스닥",us:"S&P500"}[_market] } 지수가 60일 EMA 아래입니다 (${_regime.lastDate} 기준).
+        약세 국면에서는 기계적 진입 기대값이 크게 악화되어(실데이터 검증: 거래당 −1.3%) <b>신규 진입 신호를 생성하지 않습니다</b>.
+        지수가 EMA60을 회복하면 스캔이 재개됩니다.`;
+    }
+    showToast("시장 레짐 OFF — 기계적 진입 비활성", "info");
+    _scanning = false;
+    return;
+  }
+  if (regimeBanner) regimeBanner.style.display = "none";
+
   // 섹터 ETF 사전 조회 (FIS context용)
   await _prefetchSectorETFs();
 
@@ -257,7 +295,8 @@ async function _analyzeOne(ticker, name) {
 // ── FIS 분석 ─────────────────────────────────────────────
 // 기계적 진입 조건 (indicators.js MECH 기준 — 백테스트 시뮬과 100% 동일):
 //   ① FIS ≥ 60  ② EMA20 이격 ≥ 0.3 ATR  ③ RSI 눌림(8봉 내 ≤62) 후 회복(현재 ≥50)
-//   ④ 추세 신선도 1~35봉  ⑤ 통합 진입점수 ≥ 65  ⑥ R:R ≥ 1.5
+//   ④ 추세 신선도 1~35봉  ⑤ 유동성(20봉 평균 거래대금)  ⑥ 통합 진입점수 ≥ 65
+//   ⑦ R:R ≥ 1.2 (손절 EMA20−1.5ATR 기준)   ※ 시장 레짐 게이트는 doScan에서 선행 적용
 function _analyzeFis(ticker, name, bars) {
   const df = calcIndicators(bars);
   if (!df || df.length < 30) return null;
@@ -267,8 +306,8 @@ function _analyzeFis(ticker, name, bars) {
   const lastIdx = fisBars.length - 1;
   const last    = fisBars[lastIdx];
 
-  // cheap 필터 먼저 (FIS·이격·RSI눌림·신선도) — calcEntryScore 이전에 탈락 처리
-  const cheap = mechCheapFilterAt(fisBars, lastIdx);
+  // cheap 필터 먼저 (FIS·이격·RSI눌림·신선도·유동성) — calcEntryScore 이전에 탈락 처리
+  const cheap = mechCheapFilterAt(fisBars, lastIdx, { minTurnover: _minTurnover() });
   if (!cheap.pass) return null;
 
   const judgment = makeJudgment(fisBars);
@@ -295,7 +334,7 @@ function _analyzeFis(ticker, name, bars) {
   const entry = entryData.score ?? 0;
   if (entry < MECH.ENTRY_MIN) return null;
 
-  // 매매 계획: 손절 EMA20−ATR / TP1 +ATR×2 / TP2 +ATR×3 (현재 종가 기준)
+  // 매매 계획: 손절 EMA20−1.5ATR / TP1 +ATR×2 / TP2 +ATR×3 (현재 종가 기준)
   const plan = mechTradePlan(fisBars, lastIdx, close_v);
   if (!plan || plan.rr < MECH.RR_MIN) return null;
   const rr_val = Math.round(plan.rr * 100) / 100;
@@ -315,8 +354,12 @@ function _analyzeFis(ticker, name, bars) {
 
   // fisBars 캐싱 (백테스트 버튼 클릭 시 재활용)
   _btFisBarsCache[ticker] = fisBars;
-  // 종목별 과거 백테스트 (실전 조건·거래비용 동일 적용) — 카드 즉시 강조용
-  const btSim = runMechBacktest(fisBars, { costPct: _mechCostPct() });
+  // 종목별 과거 백테스트 (실전 조건·레짐·유동성·거래비용 동일 적용) — 카드 즉시 강조용
+  const btSim = runMechBacktest(fisBars, {
+    costPct: _mechCostPct(),
+    regimeMap: _regimeCache[_market]?.map ?? null,
+    minTurnover: _minTurnover(),
+  });
 
   return {
     ticker,
@@ -774,7 +817,11 @@ function _showScanBt(ticker, idx) {
       btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
     }
 
-    const sim = runMechBacktest(fisBars, { costPct: _mechCostPct() });
+    const sim = runMechBacktest(fisBars, {
+      costPct: _mechCostPct(),
+      regimeMap: _regimeCache[_market]?.map ?? null,
+      minTurnover: _minTurnover(),
+    });
     if (!sim) {
       panel.innerHTML = "<div class='scan-bt-empty'>\uc2e0\ud638 \uc5c6\uc74c (\ub370\uc774\ud130 \ubd80\uc871)</div>";
       btn.textContent = "\uD83D\uDCCA \uBC31\uD14C\uC2A4\uD2B8"; btn.disabled = false; return;
@@ -830,8 +877,8 @@ function _showScanBt(ticker, idx) {
       verdict = `\u26a0 \uae30\ub300\uac12 \ub9c8\uc774\ub108\uc2a4 \u2014 \uc774 \uc885\ubaa9 \uae30\uacc4\uc801 \uc804\ub7b5 \ubd80\uc801\ud569`; verdictClass = "bt-warn";
     }
 
-    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">⚡ 기계적 전략 시뮬 — 스캔과 동일 조건 (FIS·이격·RSI눌림·신선도·점수·R:R)</div>`;
-    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">다음봉 시가 진입 · 손절=EMA20−ATR · 1차(ATR×2): 50%+손절↑진입가 · 2차(ATR×3): 잔여 50% · 25봉 기간제 · 중복 포지션 없음</div>`;
+    h += `<div class="scan-bt-note" style="margin-top:10px;border-bottom:1px solid #444;padding-bottom:5px;margin-bottom:6px">⚡ 기계적 전략 시뮬 — 스캔과 동일 조건 (FIS·이격·RSI눌림·신선도·유동성·점수·R:R + 시장 레짐)</div>`;
+    h += `<div class="scan-bt-note" style="margin-bottom:5px;opacity:0.75">다음봉 시가 진입 · 손절=EMA20−1.5ATR · 1차(ATR×2): 50%+손절↑진입가 · 2차(ATR×3): 잔여 50% · 25봉 기간제 · 중복 포지션 없음</div>`;
     if (mN === 0) {
       h += `<div class="scan-bt-empty">과거 신호 없음</div>`;
     } else {

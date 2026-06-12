@@ -828,7 +828,8 @@ function makeJudgment(enriched) {
 const MECH = {
   FIS_MIN: 60,          // FIS 최소값 (강한 추세)
   ENTRY_MIN: 65,        // 통합 진입점수 최소값
-  RR_MIN: 1.5,          // 손익비 최소값
+  RR_MIN: 1.2,          // 손익비 최소값 (손절 EMA20−1.5ATR 기준 — 종전 1ATR 기준 1.5와 동일 모집단)
+  STOP_ATR_MULT: 1.5,   // 손절 = EMA20 − ATR×1.5 (실데이터 검증: 1.0 대비 승률 +7%p, 노이즈 손절 감소)
   GAP_ATR_MIN: 0.3,     // EMA20 이격 최소 (손절 여유 확보)
   RSI_RECOVER_MIN: 50,  // 현재 RSI 최소 (눌림 후 회복 확인)
   RSI_PULLBACK_MAX: 62, // 최근 8봉 내 RSI가 이 값 이하로 눌렸어야 함
@@ -837,11 +838,19 @@ const MECH = {
   MIN_LOOKBACK: 80,     // 백테스트 최소 선행 데이터
   COST_PCT_KR: 0.25,    // 한국 왕복 거래비용 % (수수료+거래세+슬리피지 근사)
   COST_PCT_US: 0.10,    // 미국 왕복 거래비용 %
+  // 시장 레짐 게이트: 시장 지수 종가 > 지수 EMA60 일 때만 신규 진입
+  // (실데이터 검증: 레짐 OFF 구간 기대값 -1.34%/거래 vs ON -0.18%)
+  REGIME_INDEX: { kospi: "^KS11", kosdaq: "^KQ11", us: "^GSPC" },
+  REGIME_EMA: 60,
+  // 유동성 게이트: 20봉 평균 거래대금 최소 (실데이터: 50억 미만 구간 기대값 음수)
+  MIN_TURNOVER_KRW: 5e9,   // 한국 50억원
+  MIN_TURNOVER_USD: 1e7,   // 미국 $10M
 };
 
 // 기계적 진입 사전 필터 (진입점수 계산 전 cheap 조건들)
-// 반환: { pass, fis, gapAtr, rsiNow, hadPullback, freshBars }
-function mechCheapFilterAt(fisBars, i) {
+// opts.minTurnover: 20봉 평균 거래대금 게이트 (0이면 비활성)
+// 반환: { pass, fis, gapAtr, rsiNow, hadPullback, freshBars, turnover, turnoverOk }
+function mechCheapFilterAt(fisBars, i, opts = {}) {
   const row    = fisBars[i];
   const fis    = _fnum(row.FIS);
   const close  = _fnum(row.close);
@@ -855,22 +864,32 @@ function mechCheapFilterAt(fisBars, i) {
     if (r > 0 && r <= MECH.RSI_PULLBACK_MAX) { hadPullback = true; break; }
   }
   const freshBars = _barsInCurrentUptrend(fisBars, i);
+  // 유동성: 최근 20봉 평균 거래대금 (종가×거래량)
+  const minTurnover = opts.minTurnover ?? 0;
+  let turnover = 0, tn = 0;
+  for (let k = Math.max(0, i - 19); k <= i; k++) {
+    const c = _fnum(fisBars[k].close), v = _fnum(fisBars[k].volume);
+    if (c > 0 && v > 0) { turnover += c * v; tn++; }
+  }
+  turnover = tn > 0 ? turnover / tn : 0;
+  const turnoverOk = minTurnover <= 0 || turnover >= minTurnover;
   const pass =
     fis >= MECH.FIS_MIN &&
     gapAtr >= MECH.GAP_ATR_MIN &&
     rsiNow >= MECH.RSI_RECOVER_MIN &&
     hadPullback &&
-    freshBars >= 1 && freshBars <= MECH.FRESH_MAX_BARS;
-  return { pass, fis, gapAtr, rsiNow, hadPullback, freshBars };
+    freshBars >= 1 && freshBars <= MECH.FRESH_MAX_BARS &&
+    turnoverOk;
+  return { pass, fis, gapAtr, rsiNow, hadPullback, freshBars, turnover, turnoverOk };
 }
 
-// 기계적 매매 계획: 손절(EMA20−ATR) / TP1(+ATR×2, 50% 청산+BE) / TP2(+ATR×3)
+// 기계적 매매 계획: 손절(EMA20−ATR×1.5) / TP1(+ATR×2, 50% 청산+BE) / TP2(+ATR×3)
 function mechTradePlan(fisBars, i, entryPrice) {
   const row   = fisBars[i];
   const atr   = _fnum(row.ATR14);
   const ema20 = _fnum(row.EMA20);
   if (atr <= 0 || ema20 <= 0 || entryPrice <= 0) return null;
-  const stop = ema20 - atr;
+  const stop = ema20 - atr * MECH.STOP_ATR_MULT;
   if (stop <= 0 || stop >= entryPrice) return null;
   const risk = entryPrice - stop;
   return {
@@ -882,15 +901,33 @@ function mechTradePlan(fisBars, i, entryPrice) {
   };
 }
 
+// 시장 지수 일봉 → 레짐 판정 헬퍼
+// indexBars: fetchOHLCV(MECH.REGIME_INDEX[market]) 결과의 bars
+// 반환: { ok: 현재 레짐 ON 여부, map: {date→bool} (백테스트용), lastDate }
+function buildRegime(indexBars) {
+  if (!indexBars || indexBars.length < MECH.REGIME_EMA) return null;
+  const closes = indexBars.map(b => b.close);
+  const ema = _emaArr(closes, MECH.REGIME_EMA);
+  const map = {};
+  for (let i = 0; i < indexBars.length; i++) {
+    if (!isNaN(ema[i])) map[indexBars[i].time] = closes[i] > ema[i];
+  }
+  const last = indexBars.length - 1;
+  return { ok: closes[last] > ema[last], map, lastDate: indexBars[last].time };
+}
+
 // ── 기계적 전략 백테스트 (스캔 실전 조건과 100% 동일) ──────────
-// · 신호: FIS≥60 + cheap필터(이격/RSI눌림/신선도) + 진입점수≥65 + R:R≥1.5
-// · 진입: 신호 다음 봉 시가 / 손절: EMA20−ATR (신호봉 기준 고정)
+// · 신호: FIS≥60 + cheap필터(이격/RSI눌림/신선도/유동성) + 진입점수≥65 + R:R≥1.2
+// · 레짐 게이트: opts.regimeMap[신호일]===false 면 진입 안 함
+// · 진입: 신호 다음 봉 시가 / 손절: EMA20−ATR×1.5 (신호봉 기준 고정)
 // · TP1(+ATR×2): 50% 청산 + 손절→진입가(BE) / TP2(+ATR×3): 잔여 청산
 // · 25봉 기간만료 청산 / 포지션 중복 없음(청산 전 신규 신호 무시)
 // · costPct: 왕복 거래비용 % (거래당 1회 차감)
 function runMechBacktest(fisBars, opts = {}) {
   if (!fisBars) return null;
   const costPct = opts.costPct ?? 0;
+  const regimeMap = opts.regimeMap ?? null;
+  const minTurnover = opts.minTurnover ?? 0;
   const n = fisBars.length;
   if (n < MECH.MIN_LOOKBACK + 6) return null;
 
@@ -930,7 +967,8 @@ function runMechBacktest(fisBars, opts = {}) {
     if (i <= busyUntil) continue;             // 포지션 보유 중 — 신규 신호 무시
     if (i > n - 26) continue;                 // 25봉 추적 불가 구간 제외 (통계 편향 방지)
     if (score < MECH.ENTRY_MIN) continue;
-    if (!mechCheapFilterAt(fisBars, i).pass) continue;
+    if (regimeMap && regimeMap[fisBars[i].time] === false) continue;  // 시장 레짐 OFF
+    if (!mechCheapFilterAt(fisBars, i, { minTurnover }).pass) continue;
 
     const nextBar    = fisBars[i + 1];
     const entryPrice = _fnum(nextBar?.open, _fnum(nextBar?.close));
