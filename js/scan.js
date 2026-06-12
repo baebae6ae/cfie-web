@@ -918,7 +918,7 @@ function _restoreScanCache() {
       const _dn = cache.lastBarDate ? ` — ${cache.lastBarDate} 종가 기준` : "";
       labelEl.textContent = cache.type === "kumo"
         ? `${label} 전체 분석 완료 (체류기간 순)${_dn} (이전 결과)`
-        : `${label} 전체 분석 완료 (점수 순)${_dn} (이전 결과)`;
+        : `${label} 전체 분석 완료 (백테스트 유효 우선 · 점수 순)${_dn} (이전 결과)`;
     }
     if (grid) {
       grid.innerHTML = cache.type === "kumo"
