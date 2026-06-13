@@ -255,11 +255,10 @@
 
 .cc-summary {
   font-family: var(--font-body);
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--neutral-700);
+  color: var(--neutral-600);
   margin-bottom: var(--space-md);
-  min-height: 2.1rem;
 }
 
 /* ── Score Chips ───────────────────────────────– */
@@ -988,9 +987,69 @@
 .cc-plan-cell.tp1 .cc-plan-p, .cc-plan-cell.tp1 b { color: #b8860b; }
 .cc-plan-cell.tp2 { border-left: 3px solid #2ea043; }
 .cc-plan-cell.tp2 .cc-plan-p, .cc-plan-cell.tp2 b { color: #2ea043; }
+.cc-plan-rr {
+  margin-top: 7px;
+  padding: 5px 8px;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  background: var(--newsprint-bg);
+  border: 1px dashed var(--newsprint-grey);
+  color: var(--neutral-700);
+}
+.cc-plan-rr b { font-family: var(--font-mono); font-weight: 800; }
+.cc-plan-rr b.neg { color: #e53935; }
+.cc-plan-rr b.pos { color: #2ea043; }
 .cc-plan-note {
   margin-top: 6px;
   font-size: 0.65rem;
   line-height: 1.5;
   color: var(--neutral-600);
 }
+
+/* ── 이 종목 과거 성과 (백테스트 요약을 카드에 직접 노출) ─────── */
+.cc-perf {
+  margin-bottom: var(--space-md);
+  padding: 8px 10px;
+  border: 1px solid var(--newsprint-grey);
+  border-left-width: 3px;
+}
+.cc-perf-hd {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--neutral-700);
+  line-height: 1.45;
+}
+.cc-perf-hd b { font-weight: 800; }
+.cc-perf-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+}
+.cc-perf-stat {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.62rem;
+  color: var(--neutral-600);
+  letter-spacing: 0.02em;
+}
+.cc-perf-stat b {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--newsprint-ink);
+  line-height: 1.1;
+}
+.cc-perf-verdict {
+  margin-top: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.cc-perf.perf-ok      { background: rgba(46,160,67,0.07);  border-left-color: #2ea043; }
+.cc-perf.perf-ok      .cc-perf-verdict { color: #1a7a34; }
+.cc-perf.perf-mid     { background: rgba(210,153,34,0.07); border-left-color: #d29922; }
+.cc-perf.perf-mid     .cc-perf-verdict { color: #a67c00; }
+.cc-perf.perf-bad     { background: rgba(229,57,53,0.07);  border-left-color: #e53935; }
+.cc-perf.perf-bad     .cc-perf-verdict { color: #c62828; }
+.cc-perf.perf-neutral { background: var(--neutral-100);     border-left-color: var(--neutral-400); }
