@@ -22,6 +22,8 @@
   --text1: var(--newsprint-ink);
   --text2: var(--neutral-600);
   --text3: var(--neutral-500);
+  --bg2: var(--neutral-100);
+  --border2: var(--newsprint-grey);
 
   /* Market Colors (Retained for data viz) */
   --bull: #0D7F3C;                   /* Forest green */

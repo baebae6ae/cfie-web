@@ -612,23 +612,52 @@ function renderFisCard(c, idx) {
   // ── 매매 계획 (즉시 주문 입력 가능한 가격) ──
   const _pl = (v) => pf + fmt(_market === "us" ? v : Math.round(v), dec);
   const _pct = (v) => (v >= c.close ? "+" : "") + ((v - c.close) / c.close * 100).toFixed(1) + "%";
+  const riskPct = c.close > 0 ? (c.plan_stop - c.close) / c.close * 100 : 0;   // 음수
+  const rwLow   = c.close > 0 ? (c.plan_tp1  - c.close) / c.close * 100 : 0;
+  const rwHigh  = c.close > 0 ? (c.plan_tp2  - c.close) / c.close * 100 : 0;
   const planHTML = (c.plan_stop > 0 && c.plan_tp1 > 0) ? `
     <div class="cc-plan">
-      <div class="cc-plan-title">⚡ 매매 계획 <span class="cc-plan-sub">(종가 ${_pl(c.close)} 진입 기준)</span></div>
+      <div class="cc-plan-title">⚡ 이렇게 매매하세요 <span class="cc-plan-sub">현재가 ${_pl(c.close)}에 매수 가정</span></div>
       <div class="cc-plan-grid">
-        <div class="cc-plan-cell stop"><span class="cc-plan-k">손절</span><b>${_pl(c.plan_stop)}</b><span class="cc-plan-p">${_pct(c.plan_stop)}</span></div>
-        <div class="cc-plan-cell tp1"><span class="cc-plan-k">1차 익절 50%</span><b>${_pl(c.plan_tp1)}</b><span class="cc-plan-p">${_pct(c.plan_tp1)}</span></div>
-        <div class="cc-plan-cell tp2"><span class="cc-plan-k">2차 익절</span><b>${_pl(c.plan_tp2)}</b><span class="cc-plan-p">${_pct(c.plan_tp2)}</span></div>
+        <div class="cc-plan-cell stop"><span class="cc-plan-k">손절 (전량)</span><b>${_pl(c.plan_stop)}</b><span class="cc-plan-p">${_pct(c.plan_stop)}</span></div>
+        <div class="cc-plan-cell tp1"><span class="cc-plan-k">1차 익절 (절반)</span><b>${_pl(c.plan_tp1)}</b><span class="cc-plan-p">${_pct(c.plan_tp1)}</span></div>
+        <div class="cc-plan-cell tp2"><span class="cc-plan-k">2차 익절 (나머지)</span><b>${_pl(c.plan_tp2)}</b><span class="cc-plan-p">${_pct(c.plan_tp2)}</span></div>
       </div>
-      <div class="cc-plan-note">1차 도달 시 손절선을 진입가로 올림 · 25봉(약 5주) 내 미도달 시 전량 청산</div>
+      <div class="cc-plan-rr">잃을 위험 <b class="neg">${riskPct.toFixed(1)}%</b> 감수하고 목표 <b class="pos">+${rwLow.toFixed(1)}~${rwHigh.toFixed(1)}%</b> &mdash; 손익비 <b>${(c.rr??0).toFixed(1)}</b> (1 잃을 때 ${(c.rr??0).toFixed(1)} 노림)</div>
+      <div class="cc-plan-note">1차 익절 시 손절선을 매수가로 올려 본전을 확보합니다 · 5주(25봉) 내 목표 미도달이면 전량 청산</div>
     </div>` : "";
 
-  // ── 종목별 백테스트 요약 칩 ──
-  const btChip = (c.btTotal >= 5 && c.btPF != null)
-    ? `<span class="cs-chip" style="background:rgba(46,160,67,0.10)" title="이 종목 과거 동일조건 백테스트">과거 ${c.btTotal}회 · 승률 ${(c.btWinRate*100).toFixed(0)}% · PF ${c.btPF === Infinity ? "∞" : c.btPF.toFixed(1)}</span>`
-    : c.btTotal > 0
-    ? `<span class="cs-chip" title="신호 5건 미만 — 통계 신뢰 낮음">과거 신호 ${c.btTotal}회 (표본 부족)</span>`
-    : `<span class="cs-chip" title="과거 2년간 동일조건 신호 없음">첫 신호 (과거 사례 없음)</span>`;
+  // ── 이 종목 과거 성과 (백테스트 핵심 결과를 카드에 직접 노출) ──
+  const _wr = c.btWinRate != null ? (c.btWinRate * 100).toFixed(0) : null;
+  const _ex = c.btExpectancy != null ? (c.btExpectancy >= 0 ? "+" : "") + c.btExpectancy.toFixed(1) : null;
+  const _pfStr = c.btPF == null ? null : (c.btPF === Infinity ? "∞" : c.btPF.toFixed(1));
+  let perfHTML;
+  if (c.btTotal >= 5 && _wr != null) {
+    const cls = btDiag === "bt-ok" ? "perf-ok" : btDiag === "bt-bad" ? "perf-bad" : "perf-mid";
+    const verdict = btDiag === "bt-ok"
+      ? "통계적으로 꾸준히 통한 자리 — 신뢰도 높음"
+      : btDiag === "bt-bad"
+      ? "과거 성과 부진 — 이 종목엔 잘 안 통함, 진입 주의"
+      : "우위가 약함 — 비중을 줄여 보수적으로 접근";
+    perfHTML = `
+      <div class="cc-perf ${cls}">
+        <div class="cc-perf-hd">📊 이 종목에서 과거 같은 신호 <b>${c.btTotal}회</b> 발생했을 때</div>
+        <div class="cc-perf-stats">
+          <span class="cc-perf-stat">승률<b>${_wr}%</b></span>
+          <span class="cc-perf-stat">평균손익<b>${_ex}%</b></span>
+          <span class="cc-perf-stat">손익비<b>${_pfStr}</b></span>
+        </div>
+        <div class="cc-perf-verdict">→ ${verdict}</div>
+      </div>`;
+  } else if (c.btTotal > 0) {
+    perfHTML = `<div class="cc-perf perf-neutral"><div class="cc-perf-hd">📊 과거 같은 신호 ${c.btTotal}회뿐 — 표본이 적어 통계 신뢰는 낮습니다</div></div>`;
+  } else {
+    perfHTML = `<div class="cc-perf perf-neutral"><div class="cc-perf-hd">📊 최근 2년간 같은 신호가 없던 첫 사례 — 참고 통계 없음</div></div>`;
+  }
+
+  const freshTxt = c.freshness_bars != null
+    ? `추세 ${c.freshness_bars}일째${c.freshness_bars <= 35 ? " · 초입" : ""}`
+    : "추세 신선도 —";
 
   return `
   <div class="candidate-card" ${cardStyle}>
@@ -638,28 +667,26 @@ function renderFisCard(c, idx) {
         <div class="cc-ticker">${c.ticker} · ${pf}${fmt(c.close)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        <div class="cc-fis-badge" style="background:${eCol}">진입 점수 ${eScore.toFixed(0)}</div>
-        <div class="cc-fis-badge" style="background:#1565C0;font-size:11px">R:R ${(c.rr??0).toFixed(1)}</div>
+        <div class="cc-fis-badge" style="background:${eCol}" title="진입 매력도 종합 점수 (100점 만점, 65점 이상만 표시)">진입점수 ${eScore.toFixed(0)}<span style="opacity:.7">/100</span></div>
+        <div class="cc-fis-badge" style="background:#1565C0;font-size:11px" title="손익비 = 목표 수익 ÷ 손절 위험">손익비 ${(c.rr??0).toFixed(1)}</div>
       </div>
     </div>
     <div class="cc-label" style="color:${col}">${c.label}</div>
-    <div class="cc-summary">${c.summary_l1}</div>
     ${planHTML}
+    ${perfHTML}
+    <div class="cc-summary">${c.summary_l1}</div>
     <div class="cc-scores">
-      <span class="cs-chip ${tCls}" title="추세점수">추세 ${c.trend>=0?"+":""}${c.trend.toFixed(0)}</span>
-      <span class="cs-chip ${mCls}" title="모멘텀">모멘텀 ${c.momentum>=0?"+":""}${c.momentum.toFixed(0)}</span>
-      <span class="cs-chip" style="background:rgba(21,101,192,0.12)" title="골든크로스 후 경과 봉 수 (1~35봉이 신선)">신선도 ${c.freshness_bars ?? "—"}봉</span>
-      <span class="cs-chip" title="일목균형표">${(c.ichimoku||"—").split("—")[0].trim()}</span>
-      ${btChip}
+      <span class="cs-chip ${tCls}" title="추세 강도 점수 (높을수록 상승 추세 견고)">추세 ${c.trend>=0?"+":""}${c.trend.toFixed(0)}</span>
+      <span class="cs-chip ${mCls}" title="모멘텀 점수 (상승 탄력)">모멘텀 ${c.momentum>=0?"+":""}${c.momentum.toFixed(0)}</span>
+      <span class="cs-chip" style="background:rgba(21,101,192,0.12)" title="EMA20>EMA60 골든크로스 후 경과 일수 (1~35일이면 추세 초입)">${freshTxt}</span>
+      <span class="cs-chip" title="일목균형표 구름 위치">${(c.ichimoku||"—").split("—")[0].trim()}</span>
     </div>
-    ${btDiag === "bt-ok" ? '<div class="bt-ok-badge">✓ 백테스트 유효</div>' : ""}
-    ${btDiag === "bt-bad" ? '<div class="bt-ok-badge" style="background:rgba(229,57,53,0.12);color:#e53935;border-color:rgba(229,57,53,0.4)">⚠ 이 종목 과거 성과 부진 — 진입 주의</div>' : ""}
     <div class="cc-actions">
       <button class="cc-btn cc-btn-analyze" onclick="location.href='analyze.html?t=${encodeURIComponent(c.ticker)}'">📈 차트 분석</button>
-      <button class="cc-btn cc-btn-bt" id="bt-btn-${idx}" onclick="_showScanBt('${c.ticker}',${idx})">📊 백테스트</button>
+      <button class="cc-btn cc-btn-bt" id="bt-btn-${idx}" onclick="_showScanBt('${c.ticker}',${idx})">📊 과거 성과 자세히</button>
     </div>
     <div class="cc-bt-panel" id="bt-panel-${idx}" style="display:none"></div>
-    <button class="det-toggle" id="det-btn-${idx}" onclick="toggleDetail(${idx})">▶ 상세 설명</button>
+    <button class="det-toggle" id="det-btn-${idx}" onclick="toggleDetail(${idx})">▶ 왜 추천되었나 (상세 점수)</button>
     <div class="det-body" id="det-${idx}">
       ${entryDetailHTML(c)}
     </div>
@@ -761,7 +788,7 @@ function toggleDetail(idx) {
   const open = body.classList.contains("open");
   body.classList.toggle("open", !open);
   btn.classList.toggle("open", !open);
-  btn.textContent = open ? "▶ 상세 설명" : "▼ 상세 설명 닫기";
+  btn.textContent = open ? "▶ 왜 추천되었나 (상세 점수)" : "▼ 상세 점수 닫기";
 }
 
 // ── 쿠모 카드 ──────────────────────────────────────────────
