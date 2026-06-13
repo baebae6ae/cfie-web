@@ -894,6 +894,7 @@
   margin: 6px 0 4px;
   padding: 8px;
   background: var(--bg2);
+  color: var(--text1);
   border-radius: 8px;
   border: 1px solid var(--border2);
 }
@@ -921,9 +922,10 @@
   border-radius: 5px;
   line-height: 1.4;
 }
-.scan-bt-diag.bt-ok   { background: #2ea04320; color: #2ea043; }
-.scan-bt-diag.bt-warn { background: #e5393520; color: #e53935; }
-.scan-bt-diag.bt-bad  { background: #e5393540; color: #c62828; font-weight:700; }
+.scan-bt-diag.bt-ok      { background: #2ea04320; color: #2ea043; }
+.scan-bt-diag.bt-neutral { background: #d2992220; color: #a67c00; }
+.scan-bt-diag.bt-warn    { background: #e5393520; color: #e53935; }
+.scan-bt-diag.bt-bad     { background: #e5393540; color: #c62828; font-weight:700; }
 .scan-bt-note {
   font-size: 9.5px;
   color: var(--text3);
