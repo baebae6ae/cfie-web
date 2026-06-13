@@ -881,12 +881,6 @@
 .stop-btn:hover { background:var(--newsprint-border); }
 
 /* ─── 스캔 카드 백테스트 버튼 + 패널 ─────────────────────────── */
-.cc-btn-bt {
-  background: transparent;
-  border: 1px solid var(--border2);
-  color: var(--text2);
-}
-.cc-btn-bt:hover { background: var(--bg2); }
 .cc-btn-bt:disabled { opacity: 0.5; cursor: default; }
 
 .cc-bt-panel {
