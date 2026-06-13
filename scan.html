@@ -43,8 +43,18 @@
 
   <div class="scan-hero">
     <h1>신규 진입 종목 찾기</h1>
-    <p>기계적 진입 조건 4가지를 모두 충족한 종목만 표시됩니다 &mdash; FIS ≥ 60 · 통합 진입점수 ≥ 65 · R:R ≥ 1.5 (EMA20 지지선 손절) 세 가지 조건 동시 충족 종목만 표시 — 추세 신선도는 진입점수 안에 자동 반영</p>
+    <p><b>시장 레짐 게이트</b>(지수 &gt; 60일 EMA일 때만 가동) 통과 후, 기계적 진입 조건 <b>7가지</b>를 모두 충족한 종목만 표시됩니다 &mdash;
+       ① FIS ≥ 60 (강한 추세) ·
+       ② EMA20 이격 ≥ 0.3 ATR (손절 여유) ·
+       ③ RSI 눌림 후 회복 (8봉 내 ≤62 → 현재 ≥50) ·
+       ④ 추세 신선도 1~35봉 (추세 후반 제외) ·
+       ⑤ 유동성 — 20일 평균 거래대금 50억원/$10M 이상 ·
+       ⑥ 통합 진입점수 ≥ 65 ·
+       ⑦ R:R ≥ 1.2 (손절 EMA20−1.5ATR · 목표 +ATR×3).<br>
+       각 카드에는 <b>손절가·1차/2차 익절가</b>와 해당 종목의 <b>과거 동일조건 백테스트</b>(거래비용 차감)가 함께 표시됩니다.
+       모든 기준은 2022~2026 실데이터(KRX 7,288건 거래) 검증으로 조정되었습니다.</p>
   </div>
+  <div id="regimeBanner" style="display:none;margin:0 0 12px;padding:12px 16px;background:rgba(229,57,53,0.10);border:1px solid rgba(229,57,53,0.45);border-radius:6px;font-size:12.5px;color:#e53935;line-height:1.7"></div>
 
   <!-- 스캔 유형 탭 -->
   <div class="scan-type-tabs">
@@ -83,16 +93,14 @@
       <span class="result-count" id="resultCount">0개</span>
       <span class="result-note"  id="resultLabel"></span>
     </div>
-    <div id="kosdaqWarn" style="display:none;margin:0 0 12px;padding:10px 14px;background:rgba(210,153,34,0.12);border:1px solid rgba(210,153,34,0.4);border-radius:6px;font-size:12px;color:#d29922;line-height:1.6">
-      <b>⚠ 코스닥 주의</b> &mdash; 백테스트 결과, 코스닥은 동일 조건에서 기대값 &minus;1.0%로
-      KOSPI(&minus;0.5%) · 미국(+0.2%) 대비 현저히 저조합니다.
-      스쫐 결과는 <b>후보군 필터링 용도</b>로만 활용하고,
-      코스닥 종목은 추가 차트 분석 후 진입 여부를 판단하세요.
+    <div id="kosdaqWarn" style="display:none;margin:0 0 12px;padding:10px 14px;background:rgba(229,57,53,0.10);border:1px solid rgba(229,57,53,0.45);border-radius:6px;font-size:12px;color:#e53935;line-height:1.6">
+      <b>⛔ 코스닥 기계적 진입 비권장</b> &mdash; 2022~2026 실데이터 검증(932건)에서 코스닥은
+      레짐·유동성 게이트와 손절 개선을 적용한 후에도 거래당 기대값 <b>&minus;1.17%</b>였습니다
+      (코스피 &minus;0.26%, 2026 강세장에서도 코스닥 &minus;0.13%).
+      변동성이 커 손절 한 번의 평균 손실이 &minus;15.7%에 달합니다.
+      이 시장에서 기계적 전략은 통계적 우위가 확인되지 않았으니, 결과는 <b>관심 종목 발굴 용도로만</b> 사용하세요.
     </div>
     <div class="candidates-grid" id="candidatesGrid"></div>
-    <div id="scanMoreWrap" class="more-wrap" style="display:none">
-      <button id="scanMoreBtn" class="more-btn" onclick="loadMoreScan()">자세히 보기</button>
-    </div>
   </div>
 
 </main>

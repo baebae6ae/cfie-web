@@ -1168,3 +1168,23 @@
 /* ── R:R 경고 / Break-even 노트 ─────────────────────── */
 .rr-warn { background:rgba(229,57,53,.09); border-radius:4px; }
 .sl-breakeven { font-size:11px; color:var(--bull,#2ea043); padding:3px 0 0 2px; line-height:1.4; display:none; }
+
+/* ── 평단가 현재가 채우기 버튼 ─────────────────────── */
+.avg-cost-fill {
+  border: 1px solid #1565C0;
+  background: rgba(21, 101, 192, 0.08);
+  color: #1565C0;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.avg-cost-fill:hover { background: rgba(21, 101, 192, 0.16); }
+.avg-cost-hint {
+  font-size: 10.5px;
+  color: var(--text3, #999);
+  line-height: 1.5;
+  margin: -6px 0 10px;
+}

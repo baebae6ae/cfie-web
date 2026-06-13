@@ -948,3 +948,47 @@
   border-radius: 10px;
   margin-bottom: 6px;
 }
+
+/* ── 매매 계획 (스캔 카드 내 주문 가격) ─────────────────── */
+.cc-plan {
+  margin-bottom: var(--space-md);
+  padding: 8px 10px;
+  border: 1px solid var(--newsprint-grey);
+  background: rgba(21, 101, 192, 0.04);
+}
+.cc-plan-title {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.cc-plan-sub { font-weight: 400; color: var(--neutral-600); }
+.cc-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.cc-plan-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 7px;
+  border: 1px solid var(--newsprint-grey);
+  background: var(--newsprint-bg);
+}
+.cc-plan-cell b { font-family: var(--font-mono); font-size: 0.8rem; }
+.cc-plan-k { font-size: 0.62rem; color: var(--neutral-600); letter-spacing: 0.03em; }
+.cc-plan-p { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; }
+.cc-plan-cell.stop { border-left: 3px solid #e53935; }
+.cc-plan-cell.stop .cc-plan-p, .cc-plan-cell.stop b { color: #e53935; }
+.cc-plan-cell.tp1 { border-left: 3px solid #d29922; }
+.cc-plan-cell.tp1 .cc-plan-p, .cc-plan-cell.tp1 b { color: #b8860b; }
+.cc-plan-cell.tp2 { border-left: 3px solid #2ea043; }
+.cc-plan-cell.tp2 .cc-plan-p, .cc-plan-cell.tp2 b { color: #2ea043; }
+.cc-plan-note {
+  margin-top: 6px;
+  font-size: 0.65rem;
+  line-height: 1.5;
+  color: var(--neutral-600);
+}
